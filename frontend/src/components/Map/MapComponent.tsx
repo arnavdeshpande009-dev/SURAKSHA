@@ -292,24 +292,24 @@ export const MapComponent: React.FC<MapProps> = ({
     turnMarkersRef.current.forEach((marker) => marker.setMap(null));
     turnMarkersRef.current = [];
     const path = googleRoutePath;
-
     if (path.length > 1) {
+      const routeColor = activeRoute.mode === 'SAFEST' ? '#16A34A' : '#1A73E8';
       routeCasingRef.current = new maps.Polyline({
         map,
         path,
         geodesic: true,
-        strokeColor: '#8AB4F8',
-        strokeOpacity: 0.98,
-        strokeWeight: 12,
+        strokeColor: '#185ABC',
+        strokeOpacity: 0.95,
+        strokeWeight: 10,
         zIndex: 9
       });
       routeLineRef.current = new maps.Polyline({
         map,
         path,
         geodesic: true,
-        strokeColor: '#1A73E8',
+        strokeColor: routeColor,
         strokeOpacity: 1,
-        strokeWeight: 8,
+        strokeWeight: 6,
         zIndex: 10
       });
       const bounds = new maps.LatLngBounds();
