@@ -49,5 +49,17 @@ def get_eta_predictor():
     return _eta_predictor_instance
 
 def predict_eta(route_features: Dict[str, Any]) -> Dict[str, Any]:
-    predictor = get_eta_predictor()
-    return predictor.predict_eta(route_features)
+    try:
+        predictor = get_eta_predictor()
+        return predictor.predict_eta(route_features)
+    except (ImportError, ModuleNotFoundError, ValueError):
+        baseline = int(round(float(route_features.get('baseline_travel_time_min', 0.0))))
+        average_risk = float(route_features.get('average_risk', 0.0))
+        risky_segments = int(route_features.get('risky_segment_count', 0))
+        traffic_level = int(route_features.get('traffic_level', 0))
+        delay = int(round(max(0.0, baseline * average_risk * 0.12 + risky_segments * 8 + traffic_level * 5)))
+        return {
+            'baseline_travel_time_min': baseline,
+            'predicted_delay_min': delay,
+            'predicted_eta_min': baseline + delay
+        }

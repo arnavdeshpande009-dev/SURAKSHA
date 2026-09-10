@@ -45,7 +45,7 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({
         >
           <option value="">Select origin location</option>
           {locations.map((loc) => (
-            <option key={`orig-${loc.id}`} value={loc.id} disabled={loc.id === destination}>
+            <option key={`orig-${loc.id}`} value={loc.id}>
               {loc.name} ({loc.state})
             </option>
           ))}
@@ -63,7 +63,7 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({
         >
           <option value="">Select destination location</option>
           {locations.map((loc) => (
-            <option key={`dest-${loc.id}`} value={loc.id} disabled={loc.id === origin}>
+            <option key={`dest-${loc.id}`} value={loc.id}>
               {loc.name} ({loc.state})
             </option>
           ))}

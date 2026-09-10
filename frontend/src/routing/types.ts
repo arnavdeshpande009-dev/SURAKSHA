@@ -1,4 +1,4 @@
-import type { RoadSegment, RoadStatus, ExtendedRoadSegment, AIRiskPrediction, PredictedETA } from '../types/road';
+import type { RoadStatus, ExtendedRoadSegment, PredictedETA } from '../types/road';
 
 export type RoutingMode = 'FASTEST' | 'SAFEST';
 

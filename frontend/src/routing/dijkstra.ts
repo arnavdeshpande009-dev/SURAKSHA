@@ -190,7 +190,7 @@ export function findShortestPath(
 
   const roundedDistance = Math.round(totalDistanceKm * 10) / 10;
   const riskMetrics = calculateRouteRiskMetrics(roadSegments, config.defaultFallbackRisk);
-  const etaPrediction = calculatePredictedETA(totalTravelTimeMin, roundedDistance, riskMetrics, roadSegments);
+  const etaPrediction = calculatePredictedETA(totalTravelTimeMin, riskMetrics, roadSegments);
   const totalCost = distances.get(destinationId) ?? 0;
 
   return {

@@ -5,18 +5,12 @@ import type { Alert } from '../../types/alert';
 import type { DemoStep } from '../../data/demoScenario';
 import { RouteSelector } from '../RouteSelector/RouteSelector';
 import { DemoScenarioPanel } from '../Demo/DemoScenarioPanel';
-import { DemoWalkthroughPanel } from '../Demo/DemoWalkthroughPanel';
-import { RoleWorkspacePanel } from '../RoleWorkspacePanel';
-import { DriverWorkspacePanel } from '../DriverWorkspacePanel';
-import type { FleetRole } from '../../data/fleet';
-import type { SimulatedTruck } from '../../data/fleet';
 import { Activity, ShieldCheck, Zap, Star, Bell, ShieldAlert, AlertTriangle, Info } from 'lucide-react';
 import { theme } from '../../theme';
 
 const { color, radius, shadow } = theme;
 
 interface SidebarProps {
-  role: FleetRole;
   locations: LocationNode[];
   origin: string;
   destination: string;
@@ -30,7 +24,7 @@ interface SidebarProps {
   demoStep: DemoStep;
   onNextDemoStep: () => void;
   onResetDemo: () => void;
-  onTruckUpdated: (truck: SimulatedTruck) => void;
+  rainfallSimulated: boolean;
 }
 
 const cardStyle: React.CSSProperties = {
@@ -51,7 +45,6 @@ const sectionLabelStyle: React.CSSProperties = {
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  role,
   locations,
   origin,
   destination,
@@ -65,7 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   demoStep,
   onNextDemoStep,
   onResetDemo,
-  onTruckUpdated,
+  rainfallSimulated,
 }) => {
   const formatTime = (minutes: number) => {
     const hrs = Math.floor(minutes / 60);
@@ -94,7 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className="control-sidebar" style={{
+    <aside style={{
       width: '400px',
       height: '100%',
       backgroundColor: color.bg,
@@ -124,12 +117,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
 
         {/* DEMO SCENARIO INTERACTIVE PANEL */}
-        <DemoScenarioPanel />
-
-        {/* DRIVER NAVIGATION PANEL */}
-        {role === 'DRIVER' && <DriverWorkspacePanel assignedTruck="SURAKSHA-101" assignedTruckId="TRK-101" destinationLabel="Guwahati → Aizawl" onTruckUpdated={onTruckUpdated} />}
-
-        <RoleWorkspacePanel role={role} />
+        <DemoScenarioPanel
+          currentStep={demoStep}
+          onNextStep={onNextDemoStep}
+          onResetDemo={onResetDemo}
+          rainfallSimulated={rainfallSimulated}
+        />
 
         {/* 1. ROUTE SELECTION PANEL */}
         <div style={cardStyle}>
@@ -344,7 +337,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '52px', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '160px', overflowY: 'auto' }}>
             {alerts.length > 0 ? (
               alerts.map((alert) => (
                 <div
@@ -383,15 +376,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-      </div>
-
-      {/* 6. EMERGENCY DEMO WALKTHROUGH: pinned below the scrollable alert content */}
-      <div style={{ padding: '0 16px 16px', flexShrink: 0 }}>
-        <DemoWalkthroughPanel
-          currentStep={demoStep}
-          onNextStep={onNextDemoStep}
-          onResetDemo={onResetDemo}
-        />
       </div>
     </aside>
   );

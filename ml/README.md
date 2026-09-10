@@ -1,16 +1,20 @@
-# NER-SMART ML Modules
+# SURAKSHA ML Modules
 
 ## 1. AI Road Disruption Risk Engine (`XGBClassifier`)
+
 Predicts the probability of a road segment experiencing disruption ($0.0 - 1.0$) based on rainfall, slope, elevation, and historical flood/landslide counts.
 
 ## 2. AI ETA & Delay Prediction Engine (`XGBRegressor`)
+
 > [!WARNING]
 > **SYNTHETIC / DEMO DATA DISCLAIMER**: The ETA dataset (`data/demo/synthetic_eta.csv`) is synthetically generated to demonstrate the regression pipeline for Milestone 6. It does **NOT** represent actual NER traffic or real-time GPS telemetry statistics.
 
 ### Target Variable:
+
 - `delay_minutes` (float): Additional predicted delay in minutes over baseline travel time.
 
 ### Feature Schema:
+
 - `baseline_travel_time_min` (float)
 - `route_distance_km` (float)
 - `average_risk` (float)
@@ -23,6 +27,7 @@ Predicts the probability of a road segment experiencing disruption ($0.0 - 1.0$)
 - `rainfall_7d` (float)
 
 ### Model & Evaluation Metrics:
+
 - **Algorithm**: `XGBRegressor` (`max_depth=4`, `learning_rate=0.08`, 100 estimators)
 - **MAE**: `7.72 minutes`
 - **RMSE**: `9.71 minutes`
@@ -31,14 +36,18 @@ Predicts the probability of a road segment experiencing disruption ($0.0 - 1.0$)
 ### 🚀 How to Train & Predict ETA
 
 #### Train Model:
+
 ```bash
 cd backend
 python ..\ml\src\train_eta.py
 ```
+
 Model artifacts will be saved at: `ml/models/xgb_eta_delay.joblib`.
 
 #### Predict via FastAPI:
+
 `POST /api/predict-eta`
+
 ```json
 {
   "baseline_travel_time_min": 580,
@@ -53,7 +62,9 @@ Model artifacts will be saved at: `ml/models/xgb_eta_delay.joblib`.
   "rainfall_7d": 120.0
 }
 ```
+
 **Response**:
+
 ```json
 {
   "baseline_travel_time_min": 580,
@@ -63,4 +74,5 @@ Model artifacts will be saved at: `ml/models/xgb_eta_delay.joblib`.
 ```
 
 ## ⚠️ Important Disclaimer on Real-World Data Requirements
+
 High-quality, production-ready ETA prediction requires integration with real-time GPS telematics feeds, live traffic APIs (e.g. MapmyIndia / Google Traffic), and state PWD road disruption logs.

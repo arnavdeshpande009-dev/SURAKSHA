@@ -1,4 +1,4 @@
-import type { LocationNode, RoadSegment, ExtendedRoadSegment, AIRiskPrediction } from '../types/road';
+import type { LocationNode, ExtendedRoadSegment } from '../types/road';
 
 export const DEMO_LOCATIONS: LocationNode[] = [
   { id: 'LOC-GAU', name: 'Guwahati', state: 'Assam', coordinates: [91.7362, 26.1445] },

@@ -1,6 +1,4 @@
-import { RoadNetworkService } from '../services/roadService';
 import { RouteService } from '../routing/routeService';
-import { NetworkGraph } from '../routing/graph';
 import { findShortestPath } from '../routing/dijkstra';
 
 function runMilestone6ETATests() {

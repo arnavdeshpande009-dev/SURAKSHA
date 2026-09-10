@@ -1,5 +1,5 @@
 import type { LocationNode, ExtendedRoadSegment } from '../types/road';
-import type { WeightedGraph, GraphNode, GraphEdge, EdgeCostCalculator, RoutingMode, RiskRoutingConfig } from './types';
+import type { WeightedGraph, GraphNode, GraphEdge, RoutingMode, RiskRoutingConfig } from './types';
 
 export const DEFAULT_RISK_ROUTING_CONFIG: RiskRoutingConfig = {
   riskWeightMin: 300,                  // 100% disruption probability adds 300 min penalty

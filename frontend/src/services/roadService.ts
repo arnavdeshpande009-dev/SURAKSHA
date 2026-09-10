@@ -1,4 +1,4 @@
-import type { LocationNode, RoadSegment, ExtendedRoadSegment, AIRiskPrediction } from '../types/road';
+import type { LocationNode, ExtendedRoadSegment } from '../types/road';
 import { DEMO_LOCATIONS, DEMO_ROADS } from '../data/demoRoads';
 
 // Export type explicitly for verbatimModuleSyntax compliance

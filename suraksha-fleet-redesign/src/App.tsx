@@ -1,10 +1,8 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { ExtendedRoadSegment } from './types/road';
-import type { RouteResult, RoutingMode } from './routing/types';
+import type { RoutingMode } from './routing/types';
 import type { Alert, AlertStatus, DemoIncident } from './types/alert';
 import type { DemoStep } from './data/demoScenario';
-import type { FleetRole, SimulatedTruck } from './data/fleet';
-import { INITIAL_TRUCKS } from './data/fleet';
 import { MapComponent } from './components/Map/MapComponent';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { Legend } from './components/Legend/Legend';
@@ -13,13 +11,12 @@ import { AlertDetailsModal } from './components/Alerts/AlertDetailsModal';
 import { RoadNetworkService } from './services/roadService';
 import { RouteService } from './routing/routeService';
 import { AlertEngine } from './services/alertEngine';
-import { backendService } from './services/backendService';
 import { DEMO_INCIDENTS } from './data/demoIncidents';
-import { Compass, Database, RefreshCw, Truck } from 'lucide-react';
+import { Compass, Database, Server, RefreshCw } from 'lucide-react';
 import { theme } from './theme';
 import './App.css';
 
-const { color, radius, font } = theme;
+const { color, radius, shadow, font } = theme;
 
 const statusChip = (accent: string): React.CSSProperties => ({
   display: 'flex',
@@ -37,56 +34,10 @@ const statusChip = (accent: string): React.CSSProperties => ({
 
 export const App: React.FC = () => {
   const locations = RoadNetworkService.getLocations();
-  const [activeRole, setActiveRole] = useState<FleetRole>('DISPATCHER');
-  const [trucks, setTrucks] = useState<SimulatedTruck[]>(INITIAL_TRUCKS);
-  const [weatherSummary, setWeatherSummary] = useState<string>('Weather: loading');
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      backendService.getFleetTrucks()
-        .then(setTrucks)
-        .catch(() => setTrucks((currentTrucks) => currentTrucks.map((truck) => ({
-          ...truck,
-          progress: truck.status === 'IDLE' ? truck.progress : (truck.progress + 0.008) % 1
-        }))));
-    }, 1000);
-
-    backendService.getFleetTrucks().then(setTrucks).catch(() => undefined);
-
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    void backendService.syncPendingIncidents();
-    const weatherTimer = window.setInterval(() => {
-      backendService.getWeather(26.1445, 91.7362)
-        .then((weather) => setWeatherSummary(`${weather.temperature_c}°C · ${weather.rainfall_mm}mm rain`))
-        .catch(() => setWeatherSummary('Weather: offline'));
-    }, 300000);
-    backendService.getWeather(26.1445, 91.7362)
-      .then((weather) => setWeatherSummary(`${weather.temperature_c}°C · ${weather.rainfall_mm}mm rain`))
-      .catch(() => setWeatherSummary('Weather: offline'));
-    return () => window.clearInterval(weatherTimer);
-  }, []);
-
-  useEffect(() => {
-    if (activeRole !== 'DRIVER' || !navigator.geolocation) return undefined;
-    const watchId = navigator.geolocation.watchPosition((position) => {
-      void backendService.recordTelemetry(
-        'TRK-101',
-        position.coords.latitude,
-        position.coords.longitude,
-        position.coords.speed ? position.coords.speed * 3.6 : 0
-      );
-    }, () => undefined, { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 });
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, [activeRole]);
 
   // State for M9 Demo Walkthrough Sequence
   const [demoStep, setDemoStep] = useState<DemoStep>(0);
   const [rainfallSimulated, setRainfallSimulated] = useState<boolean>(false);
-  const [backendRoads, setBackendRoads] = useState<ExtendedRoadSegment[] | null>(null);
-  const [backendEtas, setBackendEtas] = useState<Record<string, RouteResult['etaPrediction']>>({});
 
   // Dynamically update road risk based on rainfall simulation step
   const roads: ExtendedRoadSegment[] = useMemo(() => {
@@ -106,34 +57,6 @@ export const App: React.FC = () => {
     return baseRoads;
   }, [rainfallSimulated, demoStep]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const enrichRoadRisk = async () => {
-      try {
-        const enrichedRoads = await Promise.all(roads.map(async (road) => {
-          const prediction = await backendService.predictRoadRisk(road);
-          return {
-            ...road,
-            ai_risk: {
-              disruption_probability: prediction.disruption_probability,
-              risk_level: prediction.risk_level
-            }
-          };
-        }));
-
-        if (!cancelled) setBackendRoads(enrichedRoads);
-      } catch {
-        if (!cancelled) setBackendRoads(null);
-      }
-    };
-
-    enrichRoadRisk();
-    return () => { cancelled = true; };
-  }, [roads]);
-
-  const activeRoads = backendRoads ?? roads;
-
   const [selectedRoad, setSelectedRoad] = useState<ExtendedRoadSegment | null>(null);
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
   const [origin, setOrigin] = useState<string>('LOC-GAU'); // Guwahati
@@ -149,59 +72,10 @@ export const App: React.FC = () => {
   }, [userSelectedMode, demoStep]);
 
   // Compute both FASTEST and SAFEST routes and recommendation comparison
-  const localComparisonResult = useMemo(() => {
-    if (!origin || !destination) return null;
-    return RouteService.compareRoutes(origin, destination, undefined, activeRoads);
-  }, [origin, destination, activeRoads]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const enrichRouteEta = async () => {
-      if (!localComparisonResult) {
-        setBackendEtas({});
-        return;
-      }
-
-      try {
-        const entries = await Promise.all(
-          [localComparisonResult.fastestRoute, localComparisonResult.safestRoute]
-            .filter((route): route is NonNullable<typeof route> => route !== null)
-            .map(async (route) => {
-              const eta = await backendService.predictRouteEta({
-                totalTravelTimeMin: route.totalTravelTimeMin,
-                totalDistanceKm: route.totalDistanceKm,
-                averageRisk: route.riskMetrics.averageRisk,
-                maximumRisk: route.riskMetrics.maximumRisk,
-                roadSegments: route.roadSegments
-              });
-              return [route.mode, eta] as const;
-            })
-        );
-
-        if (!cancelled) setBackendEtas(Object.fromEntries(entries));
-      } catch {
-        if (!cancelled) setBackendEtas({});
-      }
-    };
-
-    enrichRouteEta();
-    return () => { cancelled = true; };
-  }, [localComparisonResult]);
-
   const comparisonResult = useMemo(() => {
-    if (!localComparisonResult) return null;
-
-    return {
-      ...localComparisonResult,
-      fastestRoute: localComparisonResult.fastestRoute
-        ? { ...localComparisonResult.fastestRoute, etaPrediction: backendEtas.FASTEST ?? localComparisonResult.fastestRoute.etaPrediction }
-        : null,
-      safestRoute: localComparisonResult.safestRoute
-        ? { ...localComparisonResult.safestRoute, etaPrediction: backendEtas.SAFEST ?? localComparisonResult.safestRoute.etaPrediction }
-        : null
-    };
-  }, [localComparisonResult, backendEtas]);
+    if (!origin || !destination) return null;
+    return RouteService.compareRoutes(origin, destination);
+  }, [origin, destination]);
 
   // Determine active route based on selected mode
   const activeRoute = useMemo(() => {
@@ -214,14 +88,14 @@ export const App: React.FC = () => {
 
   const rawAlerts = useMemo(() => {
     const roadAlerts: Alert[] = [];
-    activeRoads.forEach((road) => {
+    roads.forEach((road) => {
       const alert = AlertEngine.evaluateRoadAlert(road);
       if (alert) roadAlerts.push(alert);
     });
 
     const routeAlerts = AlertEngine.evaluateRouteAlerts(comparisonResult);
     return [...routeAlerts, ...roadAlerts];
-  }, [activeRoads, comparisonResult]);
+  }, [roads, comparisonResult]);
 
   const alerts = useMemo(() => {
     return rawAlerts.map((a) => ({
@@ -274,16 +148,13 @@ export const App: React.FC = () => {
     setSelectedAlert(null);
     setSelectedRoad(null);
     setAlertOverrides({});
-    setTrucks(INITIAL_TRUCKS);
-    setBackendRoads(null);
-    setBackendEtas({});
     setOrigin('LOC-GAU');
     setDestination('LOC-AIZ');
     RouteService.resetGraphCache();
   };
 
   return (
-    <div className="app-shell" style={{
+    <div style={{
       display: 'flex',
       flexDirection: 'column',
       width: '100vw',
@@ -293,7 +164,7 @@ export const App: React.FC = () => {
       overflow: 'hidden'
     }}>
       {/* 1. TOP HEADER BAR */}
-      <header className="app-header" style={{
+      <header style={{
         height: '60px',
         backgroundColor: color.navy,
         display: 'flex',
@@ -336,33 +207,13 @@ export const App: React.FC = () => {
             Map online
           </div>
           <div style={statusChip('#FBBF24')}>Traffic: demo</div>
-          <div style={statusChip('#A7F3D0')}>{weatherSummary}</div>
           <div style={statusChip('#7DD3FC')}>
-            <Truck size={12} /> {trucks.filter((truck) => truck.status === 'MOVING').length} trucks live
+            <Server size={12} /> AI engine ready
           </div>
-          <select
-            value={activeRole}
-            onChange={(event) => setActiveRole(event.target.value as FleetRole)}
-            aria-label="Active user role"
-            style={{
-              backgroundColor: 'rgba(255,255,255,0.08)',
-              border: '1px solid rgba(255,255,255,0.16)',
-              borderRadius: radius.pill,
-              color: '#FFFFFF',
-              padding: '6px 10px',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              cursor: 'pointer'
-            }}
-          >
-            <option value="ADMINISTRATOR">Admin</option>
-            <option value="DISPATCHER">Dispatcher</option>
-            <option value="DRIVER">Driver</option>
-            <option value="RISK_ANALYST">Risk analyst</option>
-          </select>
+
           <button
             onClick={handleResetDemo}
-            title="Reload dashboard"
+            title="Reset All Demo States"
             style={{
               backgroundColor: color.accent,
               border: 'none',
@@ -378,24 +229,23 @@ export const App: React.FC = () => {
               marginLeft: '4px'
             }}
           >
-            <RefreshCw size={13} /> Reload
+            <RefreshCw size={13} /> Reset demo
           </button>
         </div>
       </header>
 
       {/* 2. MAIN CONTROL TOWER CONTENT */}
-      <div className="app-main" style={{
+      <div style={{
         display: 'flex',
         flex: 1,
         position: 'relative',
         overflow: 'hidden'
       }}>
         {/* Map Viewport Area */}
-        <div className="map-viewport" style={{ flex: 1, position: 'relative', height: '100%', backgroundColor: color.navy }}>
+        <div style={{ flex: 1, position: 'relative', height: '100%', backgroundColor: color.navy }}>
           <MapComponent
-            roads={activeRoads}
+            roads={roads}
             locations={locations}
-            trucks={trucks}
             onRoadClick={(road) => setSelectedRoad(road)}
             selectedOrigin={origin}
             selectedDestination={destination}
@@ -416,19 +266,11 @@ export const App: React.FC = () => {
 
         {/* Control Tower Sidebar */}
         <Sidebar
-          role={activeRole}
           locations={locations}
           origin={origin}
           destination={destination}
-          onOriginChange={(id) => {
-            setOrigin(id);
-            if (id === destination) setDestination('');
-            setUserSelectedMode(null);
-          }}
-          onDestinationChange={(id) => {
-            if (id !== origin) setDestination(id);
-            setUserSelectedMode(null);
-          }}
+          onOriginChange={(id) => { setOrigin(id); setUserSelectedMode(null); }}
+          onDestinationChange={(id) => { setDestination(id); setUserSelectedMode(null); }}
           comparisonResult={comparisonResult}
           selectedMode={selectedMode}
           onSelectMode={(mode) => setUserSelectedMode(mode)}
@@ -437,12 +279,12 @@ export const App: React.FC = () => {
           demoStep={demoStep}
           onNextDemoStep={handleNextDemoStep}
           onResetDemo={handleResetDemo}
-          onTruckUpdated={(truck) => setTrucks((current) => current.map((item) => item.id === truck.id ? truck : item))}
+          rainfallSimulated={rainfallSimulated}
         />
       </div>
 
       {/* 3. BOTTOM COMPACT STATUS BAR (DEMO DATA LABELLING) */}
-      <footer className="app-footer" style={{
+      <footer style={{
         height: '30px',
         backgroundColor: color.surface,
         borderTop: `1px solid ${color.border}`,
@@ -457,7 +299,16 @@ export const App: React.FC = () => {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Database size={12} color={color.accent} />
-          <span>Basemap: Google Maps · Telemetry: Synthetic XGBoost Risk &amp; ETA</span>
+          <span>Basemap: OpenStreetMap Raster Tiles · Telemetry: Synthetic XGBoost Risk &amp; ETA</span>
+        </div>
+        <div style={{
+          backgroundColor: color.warningSoft,
+          borderRadius: radius.sm,
+          padding: '2px 10px',
+          color: color.warning,
+          fontWeight: 700
+        }}>
+          Demo / simulation mode — Internal Hackathon 2026
         </div>
       </footer>
     </div>

@@ -12,7 +12,7 @@ def test_health_check():
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
-        "service": "NER-SMART backend, AI Risk & ETA engine"
+        "service": "SURAKSHA backend, AI Risk & ETA engine"
     }
 
 def test_predict_risk_endpoint():

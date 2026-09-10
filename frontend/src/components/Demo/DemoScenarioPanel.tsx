@@ -1,142 +1,79 @@
-import type { DemoStep } from '../../data/demoScenario';
-import { DEMO_NARRATIVE_STEPS } from '../../data/demoScenario';
-import { Play, RotateCcw, Truck, ShieldAlert, ArrowRight, CheckCircle, CloudRain, Cpu } from 'lucide-react';
+import React, { useState } from 'react';
+import { Users, ShieldCheck, Circle } from 'lucide-react';
+import { theme } from '../../theme';
+import { FLEET_USERS } from '../../data/fleet';
 
-interface DemoPanelProps {
-  currentStep: DemoStep;
-  onNextStep: () => void;
-  onResetDemo: () => void;
-  rainfallSimulated: boolean;
-}
+const { color, radius, shadow } = theme;
 
-export const DemoScenarioPanel: React.FC<DemoPanelProps> = ({
-  currentStep,
-  onNextStep,
-  onResetDemo,
-  rainfallSimulated,
-}) => {
-  const activeNarrative = DEMO_NARRATIVE_STEPS[currentStep];
+export const DemoScenarioPanel: React.FC = () => {
+  const [selectedUser, setSelectedUser] = useState(FLEET_USERS[0].name);
 
   return (
     <div style={{
-      backgroundColor: '#0f172a',
-      border: '1px solid #0284c7',
-      borderRadius: '8px',
-      padding: '14px',
-      boxShadow: '0 0 16px rgba(56, 189, 248, 0.15)',
+      backgroundColor: color.surface,
+      borderRadius: radius.lg,
+      padding: '16px',
+      border: `1px solid ${color.border}`,
+      boxShadow: shadow.md,
       display: 'flex',
       flexDirection: 'column',
-      gap: '10px'
+      gap: '12px'
     }}>
-      {/* Panel Title Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Truck size={16} color="#38bdf8" />
-          <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.05em' }}>
-            DEMO / SIMULATION: EMERGENCY MEDICINE SCENARIO
+          <Users size={17} color={color.accent} />
+          <span style={{ fontSize: '0.76rem', fontWeight: 800, color: color.navy, letterSpacing: '0.04em' }}>
+            FLEET USERS
           </span>
         </div>
-        <button
-          onClick={onResetDemo}
-          title="Reset Simulation to Initial State"
-          style={{
-            backgroundColor: '#1e293b',
-            border: '1px solid #334155',
-            borderRadius: '4px',
-            color: '#94a3b8',
-            padding: '3px 8px',
-            fontSize: '0.7rem',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px'
-          }}
-        >
-          <RotateCcw size={12} /> Reset
-        </button>
+        <span style={{ fontSize: '0.7rem', color: color.textMuted, fontWeight: 700 }}>4 ACTIVE</span>
       </div>
 
-      {/* Step Progress Pills */}
-      <div style={{ display: 'flex', gap: '4px' }}>
-        {DEMO_NARRATIVE_STEPS.map((s, idx) => (
-          <div
-            key={`step-pill-${idx}`}
-            style={{
-              flex: 1,
-              height: '4px',
-              borderRadius: '2px',
-              backgroundColor: idx <= currentStep ? '#38bdf8' : '#334155',
-              transition: 'all 0.3s ease'
-            }}
-          />
-        ))}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {FLEET_USERS.map((user) => {
+          const isSelected = selectedUser === user.name;
+          const roleLabel = user.role.replace('_', ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+          return (
+            <button
+              key={user.name}
+              onClick={() => setSelectedUser(user.name)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                width: '100%',
+                padding: '8px',
+                borderRadius: radius.sm,
+                border: `1px solid ${isSelected ? color.accentBorder : 'transparent'}`,
+                backgroundColor: isSelected ? color.accentSoft : 'transparent',
+                textAlign: 'left',
+                cursor: 'pointer'
+              }}
+            >
+              <span style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                backgroundColor: user.color,
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                flexShrink: 0
+              }}>
+                {user.initials}
+              </span>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
+                <span style={{ color: color.textPrimary, fontSize: '0.8rem', fontWeight: 700 }}>{user.name}</span>
+                <span style={{ color: color.textMuted, fontSize: '0.7rem' }}>{user.title} · {roleLabel}</span>
+              </span>
+              {isSelected ? <ShieldCheck size={16} color={color.accent} /> : <Circle size={9} fill={user.status === 'ON_ROUTE' ? color.warning : color.success} color={user.status === 'ON_ROUTE' ? color.warning : color.success} />}
+            </button>
+          );
+        })}
       </div>
-
-      {/* Narrative Step Details */}
-      <div style={{ backgroundColor: '#1e293b', borderRadius: '6px', padding: '10px', fontSize: '0.8rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-          <span style={{ fontWeight: 700, color: '#f8fafc' }}>{activeNarrative.title}</span>
-          <span style={{
-            fontSize: '0.65rem',
-            fontWeight: 800,
-            padding: '2px 6px',
-            borderRadius: '4px',
-            backgroundColor: currentStep === 5 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(56, 189, 248, 0.2)',
-            color: currentStep === 5 ? '#4ade80' : '#38bdf8'
-          }}>
-            {activeNarrative.badge}
-          </span>
-        </div>
-        <p style={{ margin: '4px 0 6px 0', color: '#cbd5e1', lineHeight: '1.3' }}>
-          {activeNarrative.description}
-        </p>
-        <div style={{ fontSize: '0.725rem', color: '#94a3b8', fontWeight: 600 }}>
-          📍 Route Focus: <span style={{ color: '#f8fafc' }}>{activeNarrative.route}</span>
-        </div>
-      </div>
-
-      {/* Step Action Button */}
-      {currentStep < 5 ? (
-        <button
-          onClick={onNextStep}
-          style={{
-            backgroundColor: '#0284c7',
-            border: 'none',
-            borderRadius: '6px',
-            color: '#ffffff',
-            padding: '8px 12px',
-            fontSize: '0.8rem',
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            transition: 'all 0.2s ease',
-            boxShadow: '0 2px 8px rgba(2, 132, 199, 0.3)'
-          }}
-        >
-          <span>{activeNarrative.actionText}</span>
-          <ArrowRight size={14} />
-        </button>
-      ) : (
-        <div style={{
-          backgroundColor: 'rgba(34, 197, 94, 0.15)',
-          border: '1px solid #22c55e',
-          borderRadius: '6px',
-          padding: '8px',
-          color: '#4ade80',
-          fontSize: '0.8rem',
-          fontWeight: 700,
-          textAlign: 'center',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '6px'
-        }}>
-          <CheckCircle size={16} /> Demo Scenario Successfully Completed!
-        </div>
-      )}
     </div>
   );
 };

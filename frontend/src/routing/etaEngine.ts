@@ -1,4 +1,4 @@
-import type { RouteResult, RouteRiskMetrics } from './types';
+import type { RouteRiskMetrics } from './types';
 import type { ExtendedRoadSegment, PredictedETA } from '../types/road';
 
 /**
@@ -9,7 +9,6 @@ import type { ExtendedRoadSegment, PredictedETA } from '../types/road';
  */
 export function calculatePredictedETA(
   baselineTravelTimeMin: number,
-  routeDistanceKm: number,
   riskMetrics: RouteRiskMetrics,
   segments: ExtendedRoadSegment[]
 ): PredictedETA {

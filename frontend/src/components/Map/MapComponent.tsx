@@ -1,18 +1,18 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Maximize, RotateCcw } from 'lucide-react';
 import type { ExtendedRoadSegment, LocationNode } from '../../types/road';
 import type { RouteResult, RouteComparisonResult } from '../../routing/types';
 import type { DemoIncident } from '../../types/alert';
+import type { SimulatedTruck } from '../../data/fleet';
 import { DEMO_INCIDENTS } from '../../data/demoIncidents';
-import { RotateCcw, Maximize } from 'lucide-react';
-import * as maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import { RoadNetworkService } from '../../services/roadService';
-import { RouteService } from '../../routing/routeService';
+import { googleMapsService } from '../../services/googleMapsService';
+import type { GoogleRouteStep } from '../../services/googleMapsService';
 
 interface MapProps {
   roads: ExtendedRoadSegment[];
   locations: LocationNode[];
   onRoadClick: (road: ExtendedRoadSegment) => void;
+  trucks?: SimulatedTruck[];
   selectedOrigin?: string;
   selectedDestination?: string;
   activeRoute?: RouteResult | null;
@@ -22,377 +22,382 @@ interface MapProps {
 }
 
 const NER_CENTER: [number, number] = [92.5, 25.8];
-const NER_ZOOM = 6.5;
+const toLatLng = ([lng, lat]: [number, number]): google.maps.LatLngLiteral => ({ lat, lng });
+
+const getTruckPosition = (truck: SimulatedTruck): google.maps.LatLngLiteral => {
+  const path = truck.path;
+  if (path.length === 0) return toLatLng(NER_CENTER);
+  if (path.length === 1) return toLatLng(path[0]);
+
+  const distances = path.slice(1).map((point, index) => {
+    const previous = path[index];
+    return Math.hypot(point[0] - previous[0], point[1] - previous[1]);
+  });
+  const totalDistance = distances.reduce((total, distance) => total + distance, 0);
+  let remaining = totalDistance * truck.progress;
+
+  for (let index = 0; index < distances.length; index += 1) {
+    if (remaining <= distances[index]) {
+      const start = path[index];
+      const end = path[index + 1];
+      const ratio = distances[index] === 0 ? 0 : remaining / distances[index];
+      return toLatLng([
+        start[0] + (end[0] - start[0]) * ratio,
+        start[1] + (end[1] - start[1]) * ratio
+      ]);
+    }
+    remaining -= distances[index];
+  }
+
+  return toLatLng(path[path.length - 1]);
+};
 
 export const MapComponent: React.FC<MapProps> = ({
-  roads,
   locations,
-  onRoadClick,
+  trucks = [],
   selectedOrigin,
   selectedDestination,
   activeRoute,
-  comparisonResult,
   incidents = DEMO_INCIDENTS,
   onIncidentClick,
 }) => {
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const mapsRef = useRef<typeof google.maps | null>(null);
+  const alternativeRouteRefs = useRef<google.maps.Polyline[]>([]);
+  const routeCasingRef = useRef<google.maps.Polyline | null>(null);
+  const routeLineRef = useRef<google.maps.Polyline | null>(null);
+  const turnMarkersRef = useRef<google.maps.Marker[]>([]);
+  const truckMarkersRef = useRef<Map<string, google.maps.Marker>>(new Map());
+  const locationMarkersRef = useRef<google.maps.Marker[]>([]);
+  const incidentMarkersRef = useRef<google.maps.Marker[]>([]);
+  const [mapReady, setMapReady] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [googleRoutePath, setGoogleRoutePath] = useState<google.maps.LatLngLiteral[]>([]);
+  const [routeDirections, setRouteDirections] = useState<GoogleRouteStep[]>([]);
 
   useEffect(() => {
-    if (!mapContainerRef.current) return;
-
-    // Use standard free OpenStreetMap raster tiles (no API key required)
-    const map = new maplibregl.Map({
-      container: mapContainerRef.current,
-      style: {
-        version: 8,
-        sources: {
-          'osm-tiles': {
-            type: 'raster',
-            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-            tileSize: 256,
-            attribution: '&copy; OpenStreetMap contributors'
-          }
-        },
-        layers: [
-          {
-            id: 'osm-tiles-layer',
-            type: 'raster',
-            source: 'osm-tiles',
-            minzoom: 0,
-            maxzoom: 19
-          }
-        ]
-      },
-      center: NER_CENTER,
-      zoom: NER_ZOOM,
-    });
-
-    map.addControl(new maplibregl.NavigationControl(), 'top-right');
-
-    map.on('load', () => {
-      // 1. Baseline Road Network
-      map.addSource('ner-roads', {
-        type: 'geojson',
-        data: RoadNetworkService.getRoadAsGeoJSON()
+    let cancelled = false;
+    const initializeMap = async () => {
+      const maps = await googleMapsService.loadGoogleMaps();
+      if (cancelled) return;
+      if (!maps || !containerRef.current) {
+        setLoadError(true);
+        return;
+      }
+      mapsRef.current = maps;
+      mapRef.current = new maps.Map(containerRef.current, {
+        center: toLatLng(NER_CENTER),
+        zoom: 6,
+        mapTypeControl: true,
+        streetViewControl: false,
+        fullscreenControl: false,
+        styles: [{ featureType: 'poi.business', stylers: [{ visibility: 'off' }] }]
       });
-
-      map.addLayer({
-        id: 'ner-roads-casing',
-        type: 'line',
-        source: 'ner-roads',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#0f172a', 'line-width': 8 }
-      });
-
-      map.addLayer({
-        id: 'ner-roads-line',
-        type: 'line',
-        source: 'ner-roads',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-width': 5,
-          'line-color': [
-            'match',
-            ['get', 'status'],
-            'OPEN', '#22c55e',
-            'RISKY', '#eab308',
-            'BLOCKED', '#ef4444',
-            '#94a3b8'
-          ]
-        }
-      });
-
-      // 2. Alternative Route Overlay (Dashed)
-      map.addSource('alt-route', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
-      });
-
-      map.addLayer({
-        id: 'alt-route-line',
-        type: 'line',
-        source: 'alt-route',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': '#64748b',
-          'line-width': 5,
-          'line-dasharray': [2, 2]
-        }
-      });
-
-      // 3. Active Route Highlight (Glowing)
-      map.addSource('active-route', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
-      });
-
-      map.addLayer({
-        id: 'active-route-glow',
-        type: 'line',
-        source: 'active-route',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': [
-            'case',
-            ['==', ['get', 'mode'], 'SAFEST'], '#22c55e',
-            '#eab308'
-          ],
-          'line-width': 14,
-          'line-opacity': 0.4
-        }
-      });
-
-      map.addLayer({
-        id: 'active-route-line',
-        type: 'line',
-        source: 'active-route',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': [
-            'case',
-            ['==', ['get', 'mode'], 'SAFEST'], '#16a34a',
-            '#ca8a04'
-          ],
-          'line-width': 7
-        }
-      });
-
-      // 4. Incident Markers Source
-      const incidentGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point> = {
-        type: 'FeatureCollection',
-        features: incidents.map((inc) => ({
-          type: 'Feature',
-          id: inc.incident_id,
-          geometry: {
-            type: 'Point',
-            coordinates: [inc.longitude, inc.latitude]
-          },
-          properties: { ...inc }
-        }))
-      };
-
-      map.addSource('demo-incidents', {
-        type: 'geojson',
-        data: incidentGeoJSON
-      });
-
-      map.addLayer({
-        id: 'demo-incidents-circle',
-        type: 'circle',
-        source: 'demo-incidents',
-        paint: {
-          'circle-radius': 9,
-          'circle-color': [
-            'match',
-            ['get', 'severity'],
-            'CRITICAL', '#ef4444',
-            'HIGH', '#f97316',
-            'MEDIUM', '#eab308',
-            '#38bdf8'
-          ],
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff'
-        }
-      });
-
-      // 5. Locations Source
-      map.addSource('ner-locations', {
-        type: 'geojson',
-        data: RoadNetworkService.getLocationsAsGeoJSON()
-      });
-
-      map.addLayer({
-        id: 'ner-locations-circle',
-        type: 'circle',
-        source: 'ner-locations',
-        paint: {
-          'circle-radius': 7,
-          'circle-color': '#0284c7',
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff'
-        }
-      });
-
-      map.addLayer({
-        id: 'ner-locations-label',
-        type: 'symbol',
-        source: 'ner-locations',
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-size': 12,
-          'text-offset': [0, 1.2],
-          'text-anchor': 'top'
-        },
-        paint: {
-          'text-color': '#0f172a',
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 2
-        }
-      });
-
-      map.on('click', 'ner-roads-line', (e) => {
-        if (e.features && e.features.length > 0) {
-          const featureProps = e.features[0].properties;
-          const matchedRoad = roads.find((r) => r.road_id === featureProps?.road_id);
-          if (matchedRoad) {
-            onRoadClick(matchedRoad);
-          }
-        }
-      });
-
-      map.on('click', 'demo-incidents-circle', (e) => {
-        if (e.features && e.features.length > 0 && onIncidentClick) {
-          const incProps = e.features[0].properties as DemoIncident;
-          onIncidentClick(incProps);
-        }
-      });
-
-      map.on('mouseenter', 'ner-roads-line', () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', 'ner-roads-line', () => { map.getCanvas().style.cursor = ''; });
-      map.on('mouseenter', 'demo-incidents-circle', () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', 'demo-incidents-circle', () => { map.getCanvas().style.cursor = ''; });
-    });
-
-    mapRef.current = map;
-
+      setMapReady(true);
+    };
+    initializeMap();
     return () => {
-      map.remove();
+      cancelled = true;
+      routeCasingRef.current?.setMap(null);
+      routeLineRef.current?.setMap(null);
+      alternativeRouteRefs.current.forEach((line) => line.setMap(null));
+      turnMarkersRef.current.forEach((marker) => marker.setMap(null));
+      locationMarkersRef.current.forEach((marker) => marker.setMap(null));
+      incidentMarkersRef.current.forEach((marker) => marker.setMap(null));
+      truckMarkersRef.current.forEach((marker) => marker.setMap(null));
+      truckMarkersRef.current.clear();
+      mapRef.current = null;
+      mapsRef.current = null;
     };
   }, []);
 
-  // Fit map bounds automatically to active route
-  const handleFitRouteBounds = () => {
-    const map = mapRef.current;
-    if (!map || !activeRoute || activeRoute.roadSegments.length === 0) return;
+  useEffect(() => {
+    let cancelled = false;
+    const origin = locations.find((location) => location.id === selectedOrigin);
+    const destination = locations.find((location) => location.id === selectedDestination);
 
-    const bounds = new maplibregl.LngLatBounds();
-    activeRoute.roadSegments.forEach((segment) => {
-      segment.coordinates.forEach((coord) => {
-        bounds.extend(coord as [number, number]);
+    if (!mapReady || !origin || !destination || activeRoute?.status !== 'SUCCESS') {
+      setGoogleRoutePath([]);
+      setRouteDirections([]);
+      return () => { cancelled = true; };
+    }
+
+    const localPath = activeRoute.roadSegments.flatMap((segment, segmentIndex) => (
+      segmentIndex === 0 ? segment.coordinates : segment.coordinates.slice(1)
+    )).map(toLatLng);
+    setGoogleRoutePath(localPath);
+
+    const intermediateCoords = activeRoute.path
+      .slice(1, -1)
+      .map((nodeId) => locations.find((location) => location.id === nodeId)?.coordinates)
+      .filter((coordinates): coordinates is [number, number] => Boolean(coordinates));
+
+    Promise.all([
+      googleMapsService.computeTrafficAwareRoute(origin.coordinates, destination.coordinates, intermediateCoords),
+      intermediateCoords.length > 0
+        ? googleMapsService.computeAlternativeRoutes(origin.coordinates, destination.coordinates)
+        : Promise.resolve(null)
+    ]).then(([result, alternatives]) => {
+        if (!cancelled) {
+          const googlePath = result.status === 'SUCCESS' && (result.polylinePath?.length ?? 0) > 1
+            ? result.polylinePath
+            : alternatives?.status === 'SUCCESS' && (alternatives.polylinePath?.length ?? 0) > 1
+              ? alternatives.polylinePath
+              : undefined;
+          setGoogleRoutePath(googlePath ?? localPath);
+          setRouteDirections(result.directions?.length ? result.directions : alternatives?.directions ?? []);
+          const map = mapRef.current;
+          const maps = mapsRef.current;
+          if (map && maps) {
+            turnMarkersRef.current.forEach((marker) => marker.setMap(null));
+            const turnSteps = result.directions?.length ? result.directions : alternatives?.directions ?? [];
+            turnMarkersRef.current = turnSteps
+              .filter((step) => step.position)
+              .map((step) => new maps.Marker({
+                map,
+                position: step.position,
+                title: step.instruction,
+                icon: {
+                  path: maps.SymbolPath.CIRCLE,
+                  scale: 4.5,
+                  fillColor: '#FFFFFF',
+                  fillOpacity: 1,
+                  strokeColor: '#1A73E8',
+                  strokeWeight: 2
+                },
+                zIndex: 12
+              }));
+            alternativeRouteRefs.current.forEach((line) => line.setMap(null));
+            const paths = alternatives?.alternativePaths ?? [];
+            alternativeRouteRefs.current = paths.map((alternativePath) => new maps.Polyline({
+              map,
+              path: alternativePath,
+              geodesic: true,
+              strokeColor: '#8AB4F8',
+              strokeOpacity: 0.9,
+              strokeWeight: 5,
+              zIndex: 7
+            }));
+          }
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [mapReady, activeRoute, selectedOrigin, selectedDestination, locations]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+    if (!map || !maps || !mapReady) return;
+
+    locationMarkersRef.current.forEach((marker) => marker.setMap(null));
+    locationMarkersRef.current = locations.map((location) => {
+      const isOrigin = location.id === selectedOrigin;
+      const isDestination = location.id === selectedDestination;
+      return new maps.Marker({
+        map,
+        position: toLatLng(location.coordinates),
+        title: `${location.name} (${location.state})`,
+        label: isOrigin ? 'A' : isDestination ? 'B' : undefined,
+        icon: {
+          path: maps.SymbolPath.CIRCLE,
+          scale: isOrigin || isDestination ? 9 : 6,
+          fillColor: isOrigin ? '#16A34A' : isDestination ? '#DC2626' : '#2563EB',
+          fillOpacity: 1,
+          strokeColor: '#FFFFFF',
+          strokeWeight: 2
+        },
+        zIndex: isOrigin || isDestination ? 10 : 4
       });
     });
 
-    map.fitBounds(bounds, {
-      padding: { top: 60, bottom: 60, left: 60, right: 60 },
-      maxZoom: 9,
-      duration: 1000
+    incidentMarkersRef.current.forEach((marker) => marker.setMap(null));
+    incidentMarkersRef.current = incidents.map((incident) => {
+      const marker = new maps.Marker({
+        map,
+        position: { lat: incident.latitude, lng: incident.longitude },
+        title: incident.description,
+        label: { text: '!', color: '#FFFFFF', fontWeight: 'bold' },
+        icon: {
+          path: maps.SymbolPath.CIRCLE,
+          scale: 9,
+          fillColor: incident.severity === 'CRITICAL' ? '#DC2626' : '#D97706',
+          fillOpacity: 1,
+          strokeColor: '#FFFFFF',
+          strokeWeight: 2
+        },
+        zIndex: 8
+      });
+      marker.addListener('click', () => onIncidentClick?.(incident));
+      return marker;
     });
-  };
 
-  // Auto-fit bounds when activeRoute updates
+    return () => {
+      locationMarkersRef.current.forEach((marker) => marker.setMap(null));
+      incidentMarkersRef.current.forEach((marker) => marker.setMap(null));
+    };
+  }, [mapReady, locations, incidents, selectedOrigin, selectedDestination, onIncidentClick]);
+
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    const maps = mapsRef.current;
+    if (!map || !maps || !mapReady) return;
 
-    const activeSource = map.getSource('active-route') as maplibregl.GeoJSONSource;
-    const altSource = map.getSource('alt-route') as maplibregl.GeoJSONSource;
-
-    if (activeSource && activeRoute) {
-      activeSource.setData(RouteService.getRouteAsGeoJSON(activeRoute));
-      handleFitRouteBounds();
-    } else if (activeSource) {
-      activeSource.setData({ type: 'FeatureCollection', features: [] });
-    }
-
-    if (altSource && comparisonResult) {
-      const altRoute = activeRoute?.mode === 'SAFEST' ? comparisonResult.fastestRoute : comparisonResult.safestRoute;
-      if (altRoute && altRoute.path.join('-') !== activeRoute?.path.join('-')) {
-        altSource.setData(RouteService.getRouteAsGeoJSON(altRoute));
-      } else {
-        altSource.setData({ type: 'FeatureCollection', features: [] });
+    const activeTruckIds = new Set(trucks.map((truck) => truck.id));
+    trucks.forEach((truck) => {
+      const position = getTruckPosition(truck);
+      const existingMarker = truckMarkersRef.current.get(truck.id);
+      if (existingMarker) {
+        existingMarker.setPosition(position);
+        existingMarker.setTitle(`${truck.label} · ${truck.driver} · ${truck.status}`);
+        return;
       }
-    } else if (altSource) {
-      altSource.setData({ type: 'FeatureCollection', features: [] });
-    }
-  }, [activeRoute, comparisonResult]);
 
-  // Update node highlight colors
+      const marker = new maps.Marker({
+        map,
+        position,
+        title: `${truck.label} · ${truck.driver} · ${truck.status}`,
+        label: { text: '▰', color: '#FFFFFF', fontWeight: 'bold' },
+        icon: {
+          path: maps.SymbolPath.CIRCLE,
+          scale: 11,
+          fillColor: truck.color,
+          fillOpacity: 1,
+          strokeColor: '#FFFFFF',
+          strokeWeight: 3
+        },
+        zIndex: 30
+      });
+      truckMarkersRef.current.set(truck.id, marker);
+    });
+
+    truckMarkersRef.current.forEach((marker, truckId) => {
+      if (!activeTruckIds.has(truckId)) {
+        marker.setMap(null);
+        truckMarkersRef.current.delete(truckId);
+      }
+    });
+  }, [mapReady, trucks]);
+
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    const maps = mapsRef.current;
+    if (!map || !maps || !mapReady) return;
 
-    if (map.getLayer('ner-locations-circle')) {
-      map.setPaintProperty('ner-locations-circle', 'circle-color', [
-        'case',
-        ['==', ['get', 'id'], selectedOrigin || ''], '#22c55e',
-        ['==', ['get', 'id'], selectedDestination || ''], '#ef4444',
-        '#0284c7'
-      ]);
+    routeCasingRef.current?.setMap(null);
+    routeLineRef.current?.setMap(null);
+    alternativeRouteRefs.current.forEach((line) => line.setMap(null));
+    alternativeRouteRefs.current = [];
+    turnMarkersRef.current.forEach((marker) => marker.setMap(null));
+    turnMarkersRef.current = [];
+    const path = googleRoutePath;
 
-      map.setPaintProperty('ner-locations-circle', 'circle-radius', [
-        'case',
-        ['in', ['get', 'id'], ['literal', [selectedOrigin || '', selectedDestination || '']]], 10,
-        7
-      ]);
-    }
-  }, [selectedOrigin, selectedDestination]);
-
-  const handleResetView = () => {
-    if (mapRef.current) {
-      mapRef.current.flyTo({
-        center: NER_CENTER,
-        zoom: NER_ZOOM,
-        essential: true
+    if (path.length > 1) {
+      routeCasingRef.current = new maps.Polyline({
+        map,
+        path,
+        geodesic: true,
+        strokeColor: '#8AB4F8',
+        strokeOpacity: 0.98,
+        strokeWeight: 12,
+        zIndex: 9
       });
+      routeLineRef.current = new maps.Polyline({
+        map,
+        path,
+        geodesic: true,
+        strokeColor: '#1A73E8',
+        strokeOpacity: 1,
+        strokeWeight: 8,
+        zIndex: 10
+      });
+      const bounds = new maps.LatLngBounds();
+      path.forEach((coordinate) => bounds.extend(coordinate));
+      map.fitBounds(bounds, 60);
+    } else {
+      routeCasingRef.current = null;
+      routeLineRef.current = null;
     }
+
+    return () => {
+      alternativeRouteRefs.current.forEach((line) => line.setMap(null));
+      routeCasingRef.current?.setMap(null);
+      routeLineRef.current?.setMap(null);
+    };
+  }, [mapReady, activeRoute, googleRoutePath]);
+
+  const fitSelectedRoute = () => {
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+    if (!map || !maps || activeRoute?.status !== 'SUCCESS') return;
+    const bounds = new maps.LatLngBounds();
+    if (googleRoutePath.length > 1) {
+      googleRoutePath.forEach((coordinate) => bounds.extend(coordinate));
+    } else {
+      activeRoute.roadSegments.forEach((segment) => segment.coordinates.forEach((coordinate) => bounds.extend(toLatLng(coordinate))));
+    }
+    map.fitBounds(bounds, 60);
   };
+
+  const resetView = () => {
+    mapRef.current?.setCenter(toLatLng(NER_CENTER));
+    mapRef.current?.setZoom(6);
+  };
+
+  const formatStepDistance = (meters: number) => meters >= 1000
+    ? `${(meters / 1000).toFixed(1)} km`
+    : `${Math.max(50, Math.round(meters / 10) * 10)} m`;
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
-
-      <div style={{
-        position: 'absolute',
-        top: '20px',
-        right: '54px',
-        display: 'flex',
-        gap: '8px',
-        zIndex: 10
-      }}>
-        {activeRoute && activeRoute.status === 'SUCCESS' && (
-          <button
-            onClick={handleFitRouteBounds}
-            title="Zoom to Route Bounds"
-            style={{
-              backgroundColor: 'rgba(15, 23, 42, 0.9)',
-              border: '1px solid #334155',
-              borderRadius: '6px',
-              color: '#38bdf8',
-              padding: '6px 12px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-            }}
-          >
-            <Maximize size={14} /> Fit Route
-          </button>
-        )}
-
-        <button
-          onClick={handleResetView}
-          title="Reset Map to Northeast Region"
-          style={{
-            backgroundColor: 'rgba(15, 23, 42, 0.9)',
-            border: '1px solid #334155',
-            borderRadius: '6px',
-            color: '#f8fafc',
-            padding: '6px 12px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '0.8rem',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-          }}
-        >
+    <div style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#E8F0FE' }}>
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      {loadError && (
+        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: '24px', background: '#F8FAFC', color: '#334155', textAlign: 'center' }}>
+          <div>
+            <strong>Google Maps is not configured</strong>
+            <div style={{ marginTop: '8px', fontSize: '0.85rem' }}>Add VITE_GOOGLE_MAPS_API_KEY to frontend/.env and reload.</div>
+          </div>
+        </div>
+      )}
+      <div style={{ position: 'absolute', top: '20px', right: '54px', display: 'flex', gap: '8px', zIndex: 10 }}>
+        <button onClick={fitSelectedRoute} title="Fit selected route" style={{ background: '#0F2747', color: '#FFFFFF', border: 0, borderRadius: '6px', padding: '8px 10px', cursor: 'pointer', display: 'flex', gap: '5px', alignItems: 'center' }}>
+          <Maximize size={14} /> Fit Route
+        </button>
+        <button onClick={resetView} title="Reset map view" style={{ background: '#0F2747', color: '#FFFFFF', border: 0, borderRadius: '6px', padding: '8px 10px', cursor: 'pointer', display: 'flex', gap: '5px', alignItems: 'center' }}>
           <RotateCcw size={14} /> Reset View
         </button>
       </div>
+      {routeDirections.length > 0 && (
+        <div style={{
+          position: 'absolute',
+          left: '18px',
+          top: '18px',
+          width: 'min(310px, calc(100% - 36px))',
+          maxHeight: 'min(430px, calc(100% - 36px))',
+          overflow: 'hidden',
+          borderRadius: '10px',
+          background: 'rgba(255,255,255,0.97)',
+          boxShadow: '0 3px 14px rgba(15,39,71,0.24)',
+          color: '#0B1B34',
+          zIndex: 11
+        }}>
+          <div style={{ padding: '12px 14px', background: '#2954FF', color: '#FFFFFF' }}>
+            <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.06em', opacity: 0.8 }}>NEXT DIRECTION</div>
+            <div style={{ marginTop: '4px', fontSize: '0.9rem', lineHeight: 1.3, fontWeight: 800 }}>{routeDirections[0].instruction}</div>
+            <div style={{ marginTop: '4px', fontSize: '0.72rem', opacity: 0.9 }}>{formatStepDistance(routeDirections[0].distanceMeters)}</div>
+          </div>
+          <div style={{ maxHeight: '280px', overflowY: 'auto', padding: '4px 0' }}>
+            {routeDirections.slice(1).map((step, index) => (
+              <div key={`${step.instruction}-${index}`} style={{ display: 'flex', gap: '10px', padding: '9px 14px', borderBottom: '1px solid #E3E8EF', fontSize: '0.72rem', lineHeight: 1.35 }}>
+                <span style={{ minWidth: '18px', height: '18px', display: 'grid', placeItems: 'center', borderRadius: '50%', background: '#E8EEFF', color: '#2954FF', fontWeight: 800 }}>{index + 2}</span>
+                <span style={{ flex: 1 }}>{step.instruction}</span>
+                <span style={{ color: '#8794A6', whiteSpace: 'nowrap' }}>{formatStepDistance(step.distanceMeters)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,11 +1,13 @@
-# NER-SMART — AI-Powered Logistics & Accessibility Intelligence Platform for the North Eastern Region (NER)
+# SURAKSHA — AI-Powered Logistics & Accessibility Intelligence Platform for the North Eastern Region (NER)
 
 **SIH Problem Statement ID:** 26002
 
 ## 📌 Project Overview
-NER-SMART is designed to monitor and predict logistics and accessibility disruptions across the North Eastern Region (NER) caused by severe weather (heavy rainfall, floods, landslides), road damage, and congestion. It empowers logistics operators to identify high-risk routes, select safer alternate pathways, accurately estimate ETAs, and receive real-time disruption alerts.
+
+SURAKSHA is designed to monitor and predict logistics and accessibility disruptions across the North Eastern Region (NER) caused by severe weather (heavy rainfall, floods, landslides), road damage, and congestion. It empowers logistics operators to identify high-risk routes, select safer alternate pathways, accurately estimate ETAs, and receive real-time disruption alerts.
 
 ## 🏗️ Monorepo Architecture
+
 ```text
 nersmart/
 ├── frontend/     # React + TypeScript + Vite web interface (MapLibre GL JS)
@@ -21,6 +23,7 @@ nersmart/
 ## 🚀 How to Start
 
 ### 1. Backend (FastAPI)
+
 ```bash
 cd backend
 # On Windows:
@@ -32,17 +35,20 @@ pip install -r requirements.txt
 # Start FastAPI server:
 python main.py
 ```
-* **API Health Check**: `http://localhost:8000/api/health`
-* **Risk Prediction Endpoint**: `POST http://localhost:8000/api/predict-risk`
-* **ETA Prediction Endpoint**: `POST http://localhost:8000/api/predict-eta`
+
+- **API Health Check**: `http://localhost:8000/api/health`
+- **Risk Prediction Endpoint**: `POST http://localhost:8000/api/predict-risk`
+- **ETA Prediction Endpoint**: `POST http://localhost:8000/api/predict-eta`
 
 ### 2. Frontend (React + TS + Vite)
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-* **Application URL**: `http://localhost:5173`
+
+- **Application URL**: `http://localhost:5173`
 
 ---
 

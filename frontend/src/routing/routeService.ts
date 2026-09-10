@@ -8,40 +8,45 @@ import type {
   RiskRoutingConfig,
   RouteComparisonResult
 } from './types';
+import type { ExtendedRoadSegment } from '../types/road';
 
 export class RouteService {
   private static cachedGraph: WeightedGraph | null = null;
+  private static cachedRoads: ExtendedRoadSegment[] | null = null;
 
-  static getGraph(): WeightedGraph {
-    if (!this.cachedGraph) {
+  static getGraph(roads: ExtendedRoadSegment[] = RoadNetworkService.getRoadSegments()): WeightedGraph {
+    if (!this.cachedGraph || this.cachedRoads !== roads) {
       const locations = RoadNetworkService.getLocations();
-      const roads = RoadNetworkService.getRoadSegments();
       this.cachedGraph = NetworkGraph.buildGraph(locations, roads);
+      this.cachedRoads = roads;
     }
     return this.cachedGraph;
   }
 
   static resetGraphCache(): void {
     this.cachedGraph = null;
+    this.cachedRoads = null;
   }
 
   static calculateRoute(
     originId: string,
     destinationId: string,
     mode: RoutingMode = 'FASTEST',
-    config: RiskRoutingConfig = DEFAULT_RISK_ROUTING_CONFIG
+    config: RiskRoutingConfig = DEFAULT_RISK_ROUTING_CONFIG,
+    roads?: ExtendedRoadSegment[]
   ): RouteResult {
-    const graph = this.getGraph();
+    const graph = this.getGraph(roads);
     return findShortestPath(originId, destinationId, graph, mode, config);
   }
 
   static compareRoutes(
     originId: string,
     destinationId: string,
-    config: RiskRoutingConfig = DEFAULT_RISK_ROUTING_CONFIG
+    config: RiskRoutingConfig = DEFAULT_RISK_ROUTING_CONFIG,
+    roads?: ExtendedRoadSegment[]
   ): RouteComparisonResult {
-    const fastest = this.calculateRoute(originId, destinationId, 'FASTEST', config);
-    const safest = this.calculateRoute(originId, destinationId, 'SAFEST', config);
+    const fastest = this.calculateRoute(originId, destinationId, 'FASTEST', config, roads);
+    const safest = this.calculateRoute(originId, destinationId, 'SAFEST', config, roads);
 
     if (fastest.status !== 'SUCCESS' || safest.status !== 'SUCCESS') {
       return {

@@ -1,4 +1,4 @@
-import { AlertEngine, DEFAULT_ALERT_CONFIG } from '../services/alertEngine';
+import { AlertEngine } from '../services/alertEngine';
 import { DEMO_ROADS } from '../data/demoRoads';
 
 function runMilestone7AlertTests() {
