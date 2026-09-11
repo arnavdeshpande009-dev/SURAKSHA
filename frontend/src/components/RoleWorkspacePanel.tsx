@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { AlertTriangle, ClipboardList, MapPinned, ShieldCheck, Truck, Users } from 'lucide-react';
+import { AlertTriangle, ClipboardList, MapPinned, ShieldCheck, Truck, Users, Activity, Eye } from 'lucide-react';
 import type { FleetRole } from '../data/fleet';
+import type { DemoIncident } from '../types/alert';
 import { theme } from '../theme';
 import { backendService } from '../services/backendService';
 
@@ -8,6 +9,8 @@ const { color, radius, shadow } = theme;
 
 interface RoleWorkspacePanelProps {
   role: FleetRole;
+  incidents?: DemoIncident[];
+  onOpenFieldReport?: () => void;
 }
 
 const roleCopy: Record<FleetRole, { title: string; summary: string }> = {
@@ -36,12 +39,18 @@ const roleActions: Record<FleetRole, { label: string; icon: React.ReactNode }[]>
   ],
 };
 
-export const RoleWorkspacePanel: React.FC<RoleWorkspacePanelProps> = ({ role }) => {
+export const RoleWorkspacePanel: React.FC<RoleWorkspacePanelProps> = ({ role, incidents = [], onOpenFieldReport }) => {
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string>('');
   const copy = roleCopy[role];
+  const latestIncident = incidents[0];
 
   const handleAction = async (label: string) => {
+    if (label === 'Report road incident' && onOpenFieldReport) {
+      onOpenFieldReport();
+      return;
+    }
+
     setActiveAction(label);
     setActionStatus('Connecting...');
     try {
@@ -82,6 +91,46 @@ export const RoleWorkspacePanel: React.FC<RoleWorkspacePanelProps> = ({ role }) 
         </span>
       </div>
       <p style={{ margin: 0, color: color.onDarkMuted, fontSize: '0.75rem', lineHeight: 1.35 }}>{copy.summary}</p>
+
+      {/* SHARED CENTRAL INCIDENT SYNC VIEW */}
+      {latestIncident && (
+        <div style={{
+          backgroundColor: 'rgba(255,255,255,0.06)',
+          borderLeft: `3px solid ${latestIncident.severity === 'CRITICAL' ? '#EF4444' : '#F59E0B'}`,
+          borderRadius: radius.sm,
+          padding: '8px 10px',
+          fontSize: '0.73rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Activity size={12} color="#FBBF24" /> SHARED INCIDENT ({incidents.length})
+            </span>
+            <span style={{
+              fontSize: '0.62rem',
+              fontWeight: 800,
+              color: '#4ADE80',
+              backgroundColor: 'rgba(74,222,128,0.18)',
+              padding: '2px 6px',
+              borderRadius: radius.pill
+            }}>
+              {latestIncident.status ?? 'SUBMITTED'}
+            </span>
+          </div>
+          <div style={{ color: '#E2E8F0', fontWeight: 700 }}>
+            {latestIncident.title} — {latestIncident.location}
+          </div>
+          <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>
+            {role === 'ADMINISTRATOR' && `Admin View: Fleet truck NER-204 tracking active incident on ${latestIncident.road_id}`}
+            {role === 'DISPATCHER' && `Dispatcher View: Reroute recommended for ${latestIncident.road_id}`}
+            {role === 'RISK_ANALYST' && `Risk Analyst View: Disruption probability spike on corridor ${latestIncident.road_id}`}
+            {role === 'DRIVER' && `Driver View: Incident synced to Central Command. Follow updated navigation.`}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px' }}>
         {roleActions[role].map((action) => (
           <button

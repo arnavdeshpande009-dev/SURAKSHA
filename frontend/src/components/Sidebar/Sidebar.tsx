@@ -38,6 +38,7 @@ interface SidebarProps {
   language: Language;
   onLanguageChange: (lang: Language) => void;
   onOpenFieldReport: () => void;
+  incidents?: import('../../types/alert').DemoIncident[];
 }
 
 const cardStyle: React.CSSProperties = {
@@ -78,6 +79,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   language,
   onLanguageChange,
   onOpenFieldReport,
+  incidents = [],
 }) => {
   const t = TRANSLATIONS[language];
 
@@ -184,7 +186,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* DRIVER NAVIGATION PANEL */}
         {role === 'DRIVER' && <DriverWorkspacePanel assignedTruck="SURAKSHA-101" assignedTruckId="TRK-101" destinationLabel="Guwahati → Aizawl" onTruckUpdated={onTruckUpdated} />}
 
-        <RoleWorkspacePanel role={role} />
+        <RoleWorkspacePanel role={role} incidents={incidents} onOpenFieldReport={onOpenFieldReport} />
 
         {/* FIELD INCIDENT REPORT BUTTON */}
         <button

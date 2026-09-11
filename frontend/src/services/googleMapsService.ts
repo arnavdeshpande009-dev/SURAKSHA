@@ -20,13 +20,30 @@ export interface GoogleRouteStep {
   maneuver?: string;
 }
 
+export interface GoogleMapsDiagnostics {
+  hasKey: boolean;
+  keyLength: number;
+  errorType: 'NONE' | 'MISSING_KEY' | 'API_REJECTED' | 'NETWORK_ERROR';
+  errorMessage: string;
+}
+
 class GoogleMapsService {
   private isLoaded = false;
   private apiKey: string = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  private loadPromise: Promise<typeof google.maps | null> | null = null;
+  public errorType: 'NONE' | 'MISSING_KEY' | 'API_REJECTED' | 'NETWORK_ERROR' = 'NONE';
+  public errorMessage = '';
 
   constructor() {
     if (this.apiKey) {
       setOptions({ key: this.apiKey, v: 'weekly' });
+    }
+    if (typeof window !== 'undefined') {
+      window.gm_authFailure = () => {
+        this.errorType = 'API_REJECTED';
+        this.errorMessage = 'Google Maps API key rejected. Verify Maps JavaScript API, Routes API, billing status, and HTTP referrer restrictions (http://localhost:5173/*, http://127.0.0.1:5173/*).';
+        console.error('SURAKSHA Google Maps Diagnostics:', this.errorMessage);
+      };
     }
   }
 
@@ -38,33 +55,53 @@ class GoogleMapsService {
     return Boolean(this.apiKey && this.apiKey.trim() !== '' && this.apiKey !== 'YOUR_KEY_HERE');
   }
 
+  public getDiagnostics(): GoogleMapsDiagnostics {
+    return {
+      hasKey: this.hasApiKey(),
+      keyLength: this.apiKey ? this.apiKey.length : 0,
+      errorType: this.errorType,
+      errorMessage: this.errorMessage
+    };
+  }
+
   public async loadGoogleMaps(): Promise<typeof google.maps | null> {
-    const keyPresent = this.hasApiKey();
-    console.log(`Google Maps key loaded: ${keyPresent ? 'YES' : 'NO'}`);
-    if (!keyPresent) {
-      return null;
-    }
+    if (this.loadPromise) return this.loadPromise;
 
-    if (this.isLoaded && window.google?.maps) {
-      return window.google.maps;
-    }
-
-    try {
-      await importLibrary('maps');
-      try {
-        await Promise.all([
-          importLibrary('places'),
-          importLibrary('geometry')
-        ]);
-      } catch (e) {
-        console.warn('Optional Google Maps libraries failed to load:', e);
+    this.loadPromise = (async () => {
+      const keyPresent = this.hasApiKey();
+      if (!keyPresent) {
+        this.errorType = 'MISSING_KEY';
+        this.errorMessage = 'VITE_GOOGLE_MAPS_API_KEY missing in frontend/.env';
+        return null;
       }
-      this.isLoaded = true;
-      return window.google.maps;
-    } catch (error) {
-      console.warn('Google Maps JS API failed to load:', error);
-      return null;
-    }
+
+      if (this.isLoaded && window.google?.maps) {
+        return window.google.maps;
+      }
+
+      try {
+        await importLibrary('maps');
+        try {
+          await Promise.all([
+            importLibrary('places'),
+            importLibrary('geometry')
+          ]);
+        } catch (e) {
+          console.warn('Optional Google Maps libraries failed to load:', e);
+        }
+        this.isLoaded = true;
+        this.errorType = 'NONE';
+        this.errorMessage = '';
+        return window.google.maps;
+      } catch (error) {
+        this.errorType = 'API_REJECTED';
+        this.errorMessage = error instanceof Error ? error.message : 'Google Maps JS API failed to load';
+        console.warn('Google Maps JS API failed to load:', error);
+        return null;
+      }
+    })();
+
+    return this.loadPromise;
   }
 
   /**

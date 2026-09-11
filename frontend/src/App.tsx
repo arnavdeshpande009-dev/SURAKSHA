@@ -513,6 +513,7 @@ export const App: React.FC = () => {
           language={language}
           onLanguageChange={setLanguage}
           onOpenFieldReport={() => setIsFieldReportOpen(true)}
+          incidents={dynamicIncidents}
         />
       </div>
 

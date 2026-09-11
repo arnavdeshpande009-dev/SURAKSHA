@@ -337,14 +337,39 @@ export const MapComponent: React.FC<MapProps> = ({
     ? `${(meters / 1000).toFixed(1)} km`
     : `${Math.max(50, Math.round(meters / 10) * 10)} m`;
 
+  const diag = googleMapsService.getDiagnostics();
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#E8F0FE' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
       {loadError && (
-        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: '24px', background: '#F8FAFC', color: '#334155', textAlign: 'center' }}>
-          <div>
-            <strong>Google Maps is not configured</strong>
-            <div style={{ marginTop: '8px', fontSize: '0.85rem' }}>Add VITE_GOOGLE_MAPS_API_KEY to frontend/.env and reload.</div>
+        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: '24px', background: '#0F172A', color: '#F8FAFC', textAlign: 'center', zIndex: 50 }}>
+          <div style={{ maxWidth: '440px', backgroundColor: '#1E293B', padding: '24px', borderRadius: '12px', border: '1px solid #334155', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}>
+            {!diag.hasKey ? (
+              <>
+                <strong style={{ fontSize: '1rem', color: '#F87171' }}>GOOGLE MAPS NOT CONFIGURED</strong>
+                <div style={{ marginTop: '10px', fontSize: '0.85rem', color: '#94A3B8', lineHeight: 1.4 }}>
+                  <code>VITE_GOOGLE_MAPS_API_KEY</code> is missing or empty in <code>frontend/.env</code>.
+                </div>
+                <div style={{ marginTop: '12px', fontSize: '0.75rem', color: '#64748B' }}>
+                  Add your Google API key to <code>frontend/.env</code> and restart Vite dev server.
+                </div>
+              </>
+            ) : (
+              <>
+                <strong style={{ fontSize: '1rem', color: '#FBBF24' }}>GOOGLE MAPS API ERROR</strong>
+                <div style={{ marginTop: '8px', fontSize: '0.82rem', color: '#E2E8F0', fontWeight: 700 }}>
+                  API key detected ({diag.keyLength} chars), but Google Platform rejected the request.
+                </div>
+                <div style={{ marginTop: '12px', textAlign: 'left', fontSize: '0.78rem', color: '#94A3B8', backgroundColor: '#0F172A', padding: '12px', borderRadius: '6px' }}>
+                  <div style={{ fontWeight: 700, color: '#CBD5E1', marginBottom: '4px' }}>Verify Google Cloud Console Settings:</div>
+                  • Enable <strong>Maps JavaScript API</strong> &amp; <strong>Routes API</strong><br />
+                  • Check Billing Account Status<br />
+                  • Ensure HTTP Referrers permit: <code>http://localhost:5173/*</code> &amp; <code>http://127.0.0.1:5173/*</code><br />
+                  • Check API Quotas / Usage Limits
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
