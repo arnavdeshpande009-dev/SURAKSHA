@@ -274,7 +274,7 @@ export const LocalFallbackMap: React.FC<MapProps> = ({
           {/* Clean Light Basemap Background */}
           <rect width="1000" height="600" fill="#F8FAFC" />
 
-          {/* 1. Base OSM Road Network */}
+          {/* 1. Base OSM Road Network with Highway Hierarchy */}
           {corridorRoads.map((road) => {
             const isActive = activeRoadIds.has(road.road_id);
             const isAlternate = alternateRoadIds.has(road.road_id);
@@ -282,7 +282,10 @@ export const LocalFallbackMap: React.FC<MapProps> = ({
 
             const isBlocked = road.status === 'BLOCKED';
             const isRisky = road.status === 'RISKY';
-            const strokeColor = isBlocked ? '#EF4444' : isRisky ? '#F59E0B' : '#CBD5E1';
+            const highwayClass = (road as ExtendedRoadSegment & { highway?: string }).highway || 'secondary';
+            
+            const strokeColor = isBlocked ? '#EF4444' : isRisky ? '#F59E0B' : highwayClass === 'trunk' ? '#94A3B8' : highwayClass === 'primary' ? '#CBD5E1' : '#E2E8F0';
+            const strokeWidth = highwayClass === 'trunk' ? 4 : highwayClass === 'primary' ? 3 : 2;
             const strokeDash = isBlocked ? '6 4' : undefined;
 
             return (
@@ -291,7 +294,7 @@ export const LocalFallbackMap: React.FC<MapProps> = ({
                 d={toPathString(road.coordinates)}
                 fill="none"
                 stroke={strokeColor}
-                strokeWidth={isRisky ? 4 : 2}
+                strokeWidth={strokeWidth}
                 strokeDasharray={strokeDash}
                 strokeLinecap="round"
                 strokeLinejoin="round"
