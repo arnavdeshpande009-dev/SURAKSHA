@@ -49,18 +49,33 @@ export const App: React.FC = () => {
   const [dynamicIncidents, setDynamicIncidents] = useState<DemoIncident[]>(DEMO_INCIDENTS);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      backendService.getFleetTrucks()
-        .then(setTrucks)
-        .catch(() => setTrucks((currentTrucks) => currentTrucks.map((truck) => ({
-          ...truck,
-          progress: truck.status === 'IDLE' ? truck.progress : (truck.progress + 0.008) % 1
-        }))));
+    console.log('[FLEET] polling started');
+
+    // Smooth local progress animation interval (purely client-side UI update, no network calls)
+    const animationTimer = window.setInterval(() => {
+      setTrucks((currentTrucks) => currentTrucks.map((truck) => ({
+        ...truck,
+        progress: truck.status === 'IDLE' ? truck.progress : (truck.progress + 0.008) % 1
+      })));
     }, 1000);
 
-    backendService.getFleetTrucks().then(setTrucks).catch(() => undefined);
+    // Controlled 12-second fleet network polling loop
+    const fetchFleet = () => {
+      backendService.getFleetTrucks()
+        .then((liveTrucks) => {
+          setTrucks(liveTrucks);
+        })
+        .catch(() => undefined);
+    };
 
-    return () => window.clearInterval(timer);
+    fetchFleet();
+    const networkTimer = window.setInterval(fetchFleet, 12000);
+
+    return () => {
+      console.log('[FLEET] polling stopped');
+      window.clearInterval(animationTimer);
+      window.clearInterval(networkTimer);
+    };
   }, []);
 
   useEffect(() => {

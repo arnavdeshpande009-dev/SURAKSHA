@@ -107,9 +107,37 @@ const toRiskRequest = (road: ExtendedRoadSegment): RoadRiskRequest => ({
   road_condition: road.status === 'BLOCKED' ? 3 : road.status === 'RISKY' ? 2 : 1
 });
 
+let fleetInFlightAbortController: AbortController | null = null;
+let isFleetRequestInFlight = false;
+
 export const backendService = {
   async getFleetTrucks(): Promise<SimulatedTruck[]> {
-    return request<SimulatedTruck[]>('/fleet/trucks');
+    if (isFleetRequestInFlight) {
+      console.log('[FLEET] Request already in flight — skipping duplicate fetch');
+      throw new Error('Fleet request already in flight');
+    }
+
+    isFleetRequestInFlight = true;
+    fleetInFlightAbortController = new AbortController();
+    console.log('[FLEET] request started');
+
+    try {
+      const data = await request<SimulatedTruck[]>('/fleet/trucks', {
+        signal: fleetInFlightAbortController.signal
+      });
+      console.log('[FLEET] request completed');
+      return data;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('[FLEET] request aborted');
+      } else {
+        console.warn('[FLEET] request failed:', error);
+      }
+      throw error;
+    } finally {
+      isFleetRequestInFlight = false;
+      fleetInFlightAbortController = null;
+    }
   },
 
   async sendDriverAction(truckId: string, action: string): Promise<SimulatedTruck> {
