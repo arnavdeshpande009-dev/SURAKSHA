@@ -144,7 +144,9 @@ export function findShortestPath(
         let edgeCost = NetworkGraph.calculateRoadCost(edge, mode, config);
         if (edgeCost === Infinity) continue;
         if (penaltyEdgeIds?.has(edge.roadId)) {
-          edgeCost += 500;
+          // Penalize shared edges proportionally to encourage alternate corridor exploration without unphysical detours
+          const riskProb = edge.segment.ai_risk?.disruption_probability ?? config.defaultFallbackRisk;
+          edgeCost += edge.travelTimeMin * (0.5 + riskProb * 3.0);
         }
 
         const altDistance = (distances.get(currentId) ?? Infinity) + edgeCost;
