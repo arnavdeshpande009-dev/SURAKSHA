@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, Tuple
-from sklearn.model_selection import train_test_split
 from features import FEATURE_COLUMNS, TARGET_COLUMN
 
 def validate_dataframe(df: pd.DataFrame) -> bool:
@@ -13,6 +12,7 @@ def validate_dataframe(df: pd.DataFrame) -> bool:
 
 def prepare_data(df: pd.DataFrame, test_size: float = 0.2, random_state: int = 42) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     """Validates, cleans missing values, and splits data into train/test sets."""
+    from sklearn.model_selection import train_test_split
     validate_dataframe(df)
     
     # Handle missing values by median imputation

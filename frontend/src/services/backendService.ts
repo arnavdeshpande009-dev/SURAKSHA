@@ -1,7 +1,8 @@
 import type { ExtendedRoadSegment, PredictedETA } from '../types/road';
 import type { SimulatedTruck } from '../data/fleet';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api';
+const rawApiUrl = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').trim().replace(/\/+$/, '');
+const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 
 interface RoadRiskResponse {
   road_id: string;

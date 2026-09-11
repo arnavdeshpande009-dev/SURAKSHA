@@ -28,7 +28,7 @@ DATABASE_PATH = Path(os.getenv('SURAKSHA_DB_PATH', Path(__file__).with_name('sur
 UPLOADS_PATH = Path(os.getenv('SURAKSHA_UPLOADS_PATH', Path(__file__).with_name('uploads')))
 UPLOADS_PATH.mkdir(parents=True, exist_ok=True)
 AUTH_SECRET = os.getenv('SURAKSHA_AUTH_SECRET', 'development-only-change-me')
-ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv('SURAKSHA_ALLOWED_ORIGINS', 'http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174').split(',') if origin.strip()]
+ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv('SURAKSHA_ALLOWED_ORIGINS', 'http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174,https://suraksha-9pfb.onrender.com').split(',') if origin.strip()]
 
 def database() -> sqlite3.Connection:
     connection = sqlite3.connect(DATABASE_PATH)
@@ -227,6 +227,8 @@ FLEET_TRUCKS: Dict[str, FleetTruck] = {
 }
 fleet_last_update = datetime.now(timezone.utc)
 
+@app.get("/")
+@app.get("/health")
 @app.get("/api/health")
 def health_check():
     return {

@@ -37,6 +37,7 @@ class GoogleMapsService {
   private isLoaded = false;
   private apiKey: string = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
   private loadPromise: Promise<typeof google.maps | null> | null = null;
+  private authFailureListeners: Set<() => void> = new Set();
   public errorType: 'NONE' | 'MISSING_KEY' | 'API_REJECTED' | 'NETWORK_ERROR' = 'NONE';
   public errorMessage = '';
 
@@ -47,10 +48,18 @@ class GoogleMapsService {
     if (typeof window !== 'undefined') {
       window.gm_authFailure = () => {
         this.errorType = 'API_REJECTED';
-        this.errorMessage = 'Google Maps API key rejected. Verify Maps JavaScript API, Routes API, billing status, and HTTP referrer restrictions (http://localhost:5173/*, http://127.0.0.1:5173/*).';
-        console.error('SURAKSHA Google Maps Diagnostics:', this.errorMessage);
+        this.errorMessage = 'Google Maps API key rejected. Verify Maps JavaScript API, Routes API, billing status, and HTTP referrer restrictions.';
+        console.error('[MAP] gm_authFailure fired:', this.errorMessage);
+        this.authFailureListeners.forEach((listener) => listener());
       };
     }
+  }
+
+  public onAuthFailure(listener: () => void): () => void {
+    this.authFailureListeners.add(listener);
+    return () => {
+      this.authFailureListeners.delete(listener);
+    };
   }
 
   public getApiKey(): string {

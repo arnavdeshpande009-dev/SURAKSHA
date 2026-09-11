@@ -88,13 +88,27 @@ export const MapComponent: React.FC<MapProps> = ({
 
   useEffect(() => {
     let cancelled = false;
+    console.log('[MAP] mounted');
+    const diag = googleMapsService.getDiagnostics();
+    console.log(`[MAP] API key present: ${diag.hasKey}, length: ${diag.keyLength}`);
+
+    const unsubscribeAuthFailure = googleMapsService.onAuthFailure(() => {
+      if (!cancelled) {
+        console.error('[MAP] gm_authFailure listener triggered in MapComponent');
+        setLoadError(true);
+      }
+    });
+
     const initializeMap = async () => {
+      console.log('[MAP] Google Maps loading');
       const maps = await googleMapsService.loadGoogleMaps();
       if (cancelled) return;
       if (!maps || !containerRef.current) {
+        console.warn('[MAP] Google Maps failed to load or container missing');
         setLoadError(true);
         return;
       }
+      console.log('[MAP] Google Maps loaded');
       mapsRef.current = maps;
       mapRef.current = new maps.Map(containerRef.current, {
         center: toLatLng(NER_CENTER),
@@ -104,11 +118,14 @@ export const MapComponent: React.FC<MapProps> = ({
         fullscreenControl: false,
         styles: [{ featureType: 'poi.business', stylers: [{ visibility: 'off' }] }]
       });
+      console.log('[MAP] map instance created');
       setMapReady(true);
     };
     initializeMap();
     return () => {
+      console.log('[MAP] unmounted');
       cancelled = true;
+      unsubscribeAuthFailure();
       routeCasingRef.current?.setMap(null);
       routeLineRef.current?.setMap(null);
       alternativeRouteRefs.current.forEach((line) => line.setMap(null));
