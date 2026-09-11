@@ -113,19 +113,20 @@ export const App: React.FC = () => {
   // Dynamically update road risk based on rainfall simulation step or field incident
   const roads: ExtendedRoadSegment[] = useMemo(() => {
     const baseRoads = RoadNetworkService.getRoadSegments();
-    if (rainfallSimulated || demoStep >= 1) {
-      return baseRoads.map((r) => {
-        if (r.road_id === 'NER-R002') {
-          return {
-            ...r,
-            status: 'RISKY' as const,
-            ai_risk: { disruption_probability: 0.92, risk_level: 'HIGH' as const }
-          };
-        }
-        return r;
-      });
-    }
-    return baseRoads;
+    return baseRoads.map((r) => {
+      const name = (r.name || '') + ' ' + (r.road_id || '');
+      if (r.road_id === 'NER-R002' || name.toUpperCase().includes('NH6') || name.toUpperCase().includes('NH-6')) {
+        return {
+          ...r,
+          status: 'RISKY' as const,
+          ai_risk: {
+            disruption_probability: (rainfallSimulated || demoStep >= 1) ? 0.92 : 0.85,
+            risk_level: 'HIGH' as const
+          }
+        };
+      }
+      return r;
+    });
   }, [rainfallSimulated, demoStep]);
 
   useEffect(() => {
