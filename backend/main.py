@@ -28,7 +28,7 @@ DATABASE_PATH = Path(os.getenv('SURAKSHA_DB_PATH', Path(__file__).with_name('sur
 UPLOADS_PATH = Path(os.getenv('SURAKSHA_UPLOADS_PATH', Path(__file__).with_name('uploads')))
 UPLOADS_PATH.mkdir(parents=True, exist_ok=True)
 AUTH_SECRET = os.getenv('SURAKSHA_AUTH_SECRET', 'development-only-change-me')
-ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv('SURAKSHA_ALLOWED_ORIGINS', 'http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174').split(',') if origin.strip()]
+ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv('SURAKSHA_ALLOWED_ORIGINS', 'http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174,https://suraksha-9pfb.onrender.com').split(',') if origin.strip()]
 
 def database() -> sqlite3.Connection:
     connection = sqlite3.connect(DATABASE_PATH)
@@ -232,6 +232,49 @@ def health_check():
     return {
         "status": "ok",
         "service": "SURAKSHA backend, AI Risk & ETA engine"
+    }
+
+@app.get("/api/weather")
+async def get_weather(latitude: float = 26.1445, longitude: float = 91.7362):
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current_weather=true"
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                current = data.get("current_weather", {})
+                temp = float(current.get("temperature", 25.0))
+                wind = float(current.get("windspeed", 0.0))
+                code = int(current.get("weathercode", 0))
+                # Map WMO weather code to estimated rain intensity (mm)
+                rain_mm = 0.0
+                if code in [51, 53, 55, 61, 80]:
+                    rain_mm = 2.5
+                elif code in [63, 65, 81, 82]:
+                    rain_mm = 8.0
+                elif code in [95, 96, 99]:
+                    rain_mm = 18.0
+
+                return {
+                    "location": {
+                        "latitude": latitude,
+                        "longitude": longitude
+                    },
+                    "temperature_c": round(temp, 1),
+                    "rainfall_mm": round(rain_mm, 1),
+                    "precipitation_probability": 80 if rain_mm > 5 else (30 if rain_mm > 0 else 5),
+                    "weather_code": code,
+                    "wind_speed_kmh": round(wind, 1),
+                    "timestamp": current.get("time", datetime.now(timezone.utc).isoformat()),
+                    "source": "Open-Meteo",
+                    "status": "online"
+                }
+    except Exception as e:
+        print(f"Weather API error: {e}")
+    return {
+        "location": {"latitude": latitude, "longitude": longitude},
+        "status": "offline",
+        "source": "Unavailable"
     }
 
 @app.post('/api/auth/login')
