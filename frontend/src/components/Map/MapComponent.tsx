@@ -155,8 +155,8 @@ export const MapComponent: React.FC<MapProps> = ({
       segmentIndex === 0 ? segment.coordinates : segment.coordinates.slice(1)
     )).map(toLatLng);
 
-    // Compute route cache key based on origin, destination and segments
-    const routeSegmentsKey = `${selectedOrigin}->${selectedDestination}:${activeRoute.roadSegments.map(s => s.road_id).join(',')}`;
+    // Compute route cache key based on mode, origin, destination and segments
+    const routeSegmentsKey = `${activeRoute.mode}:${selectedOrigin}->${selectedDestination}:${activeRoute.roadSegments.map(s => s.road_id).join(',')}`;
     const cached = routeCacheRef.current.get(routeSegmentsKey);
     if (cached) {
       setGoogleRoutePath(cached.polylinePath);
