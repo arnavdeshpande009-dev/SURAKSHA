@@ -28,7 +28,23 @@ DATABASE_PATH = Path(os.getenv('SURAKSHA_DB_PATH', Path(__file__).with_name('sur
 UPLOADS_PATH = Path(os.getenv('SURAKSHA_UPLOADS_PATH', Path(__file__).with_name('uploads')))
 UPLOADS_PATH.mkdir(parents=True, exist_ok=True)
 AUTH_SECRET = os.getenv('SURAKSHA_AUTH_SECRET', 'development-only-change-me')
-ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv('SURAKSHA_ALLOWED_ORIGINS', 'http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174,https://suraksha-9pfb.onrender.com').split(',') if origin.strip()]
+DEFAULT_ORIGINS = [
+    'http://127.0.0.1:5173',
+    'http://localhost:5173',
+    'http://127.0.0.1:5174',
+    'http://localhost:5174',
+    'https://suraksha-9pfb.onrender.com'
+]
+
+raw_env_origins = os.getenv('SURAKSHA_ALLOWED_ORIGINS', '')
+parsed_env_origins = [o.strip() for o in raw_env_origins.split(',') if o.strip()]
+
+# Build complete set of origins, normalizing by stripping trailing slashes
+ALLOWED_ORIGINS = list({
+    origin.rstrip('/')
+    for origin in (DEFAULT_ORIGINS + parsed_env_origins)
+    if origin
+})
 
 def database() -> sqlite3.Connection:
     connection = sqlite3.connect(DATABASE_PATH)
@@ -113,8 +129,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=86400,
 )
 
 class RoadRiskRequest(BaseModel):

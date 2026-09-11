@@ -54,3 +54,22 @@ def test_predict_eta_endpoint():
     assert data["baseline_travel_time_min"] == 580
     assert data["predicted_delay_min"] >= 0
     assert data["predicted_eta_min"] >= 580
+
+def test_cors_preflight_production_origin():
+    headers = {
+        "Origin": "https://suraksha-9pfb.onrender.com",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type"
+    }
+    response = client.options("/api/predict-risk", headers=headers)
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "https://suraksha-9pfb.onrender.com"
+
+def test_cors_get_fleet_trucks_production_origin():
+    headers = {
+        "Origin": "https://suraksha-9pfb.onrender.com"
+    }
+    response = client.get("/api/fleet/trucks", headers=headers)
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "https://suraksha-9pfb.onrender.com"
+
