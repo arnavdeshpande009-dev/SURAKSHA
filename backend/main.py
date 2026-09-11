@@ -37,14 +37,25 @@ DEFAULT_ORIGINS = [
 ]
 
 raw_env_origins = os.getenv('SURAKSHA_ALLOWED_ORIGINS', '')
-parsed_env_origins = [o.strip() for o in raw_env_origins.split(',') if o.strip()]
+parsed_env_origins = [o.strip().rstrip('/') for o in raw_env_origins.split(',') if o.strip()]
 
 # Build complete set of origins, normalizing by stripping trailing slashes
 ALLOWED_ORIGINS = list({
-    origin.rstrip('/')
+    origin
     for origin in (DEFAULT_ORIGINS + parsed_env_origins)
     if origin
 })
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.onrender\.com",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=86400,
+)
 
 def database() -> sqlite3.Connection:
     connection = sqlite3.connect(DATABASE_PATH)
@@ -124,16 +135,6 @@ def require_roles(*roles: str):
     return dependency
 
 initialize_database()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=86400,
-)
 
 class RoadRiskRequest(BaseModel):
     road_id: str = "NER-R001"
