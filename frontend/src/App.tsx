@@ -152,11 +152,13 @@ export const App: React.FC = () => {
   const handleOriginChange = (newOrigin: string) => {
     setOrigin(newOrigin);
     setUserSelectedMode(null);
+    setBackendEtas({});
   };
 
   const handleDestinationChange = (newDest: string) => {
     setDestination(newDest);
     setUserSelectedMode(null);
+    setBackendEtas({});
   };
 
   const selectedMode: RoutingMode = useMemo(() => {
