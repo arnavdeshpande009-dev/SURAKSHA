@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import type { ExtendedRoadSegment } from './types/road';
 import type { RouteResult, RoutingMode, RiskRoutingConfig } from './routing/types';
 import type { Alert, AlertStatus, DemoIncident } from './types/alert';
@@ -18,7 +18,7 @@ import { backendService } from './services/backendService';
 import { DEMO_INCIDENTS } from './data/demoIncidents';
 import type { Language } from './data/translations';
 import { DEFAULT_RISK_ROUTING_CONFIG } from './routing/graph';
-import { Compass, Database, RefreshCw, Truck } from 'lucide-react';
+import { Compass, Database, RefreshCw, Truck, ChevronDown } from 'lucide-react';
 import { theme } from './theme';
 import './App.css';
 
@@ -38,9 +38,28 @@ const statusChip = (accent: string): React.CSSProperties => ({
   letterSpacing: '0.02em',
 });
 
+const ROLE_OPTIONS: { role: FleetRole; label: string }[] = [
+  { role: 'ADMINISTRATOR', label: 'Admin' },
+  { role: 'DISPATCHER', label: 'Dispatcher' },
+  { role: 'DRIVER', label: 'Driver' },
+  { role: 'RISK_ANALYST', label: 'Risk analyst' }
+];
+
 export const App: React.FC = () => {
   const locations = RoadNetworkService.getLocations();
   const [activeRole, setActiveRole] = useState<FleetRole>('DISPATCHER');
+  const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState<boolean>(false);
+  const roleDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (roleDropdownRef.current && !roleDropdownRef.current.contains(event.target as Node)) {
+        setIsRoleDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   const [trucks, setTrucks] = useState<SimulatedTruck[]>(INITIAL_TRUCKS);
   const [weatherSummary, setWeatherSummary] = useState<string>('Weather: loading');
   const [cargoType, setCargoType] = useState<string>('MEDICAL_SUPPLIES');
@@ -445,26 +464,85 @@ export const App: React.FC = () => {
           <div style={statusChip('#7DD3FC')}>
             <Truck size={12} /> {trucks.filter((truck) => truck.status === 'MOVING').length} trucks live
           </div>
-          <select
-            value={activeRole}
-            onChange={(event) => setActiveRole(event.target.value as FleetRole)}
-            aria-label="Active user role"
-            style={{
-              backgroundColor: 'rgba(255,255,255,0.08)',
-              border: '1px solid rgba(255,255,255,0.16)',
-              borderRadius: radius.pill,
-              color: '#FFFFFF',
-              padding: '6px 10px',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              cursor: 'pointer'
-            }}
-          >
-            <option value="ADMINISTRATOR" style={{ backgroundColor: '#0F2747', color: '#FFFFFF' }}>Admin</option>
-            <option value="DISPATCHER" style={{ backgroundColor: '#0F2747', color: '#FFFFFF' }}>Dispatcher</option>
-            <option value="DRIVER" style={{ backgroundColor: '#0F2747', color: '#FFFFFF' }}>Driver</option>
-            <option value="RISK_ANALYST" style={{ backgroundColor: '#0F2747', color: '#FFFFFF' }}>Risk analyst</option>
-          </select>
+          {/* Custom Dark Role Selector */}
+          <div ref={roleDropdownRef} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => setIsRoleDropdownOpen((prev) => !prev)}
+              aria-label="Active user role"
+              style={{
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.16)',
+                borderRadius: radius.pill,
+                color: '#FFFFFF',
+                padding: '6px 12px',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <span>{ROLE_OPTIONS.find((opt) => opt.role === activeRole)?.label ?? 'Role'}</span>
+              <ChevronDown size={12} style={{ transform: isRoleDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+            </button>
+
+            {isRoleDropdownOpen && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 6px)',
+                right: 0,
+                backgroundColor: '#0F2747',
+                border: '1px solid rgba(255,255,255,0.16)',
+                borderRadius: radius.md,
+                padding: '4px',
+                zIndex: 100,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                minWidth: '130px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px'
+              }}>
+                {ROLE_OPTIONS.map((opt) => {
+                  const isSelected = activeRole === opt.role;
+                  return (
+                    <button
+                      key={opt.role}
+                      type="button"
+                      onClick={() => {
+                        setActiveRole(opt.role);
+                        setIsRoleDropdownOpen(false);
+                      }}
+                      style={{
+                        backgroundColor: isSelected ? color.accent : 'transparent',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        borderRadius: radius.sm,
+                        padding: '7px 10px',
+                        fontSize: '0.75rem',
+                        fontWeight: isSelected ? 700 : 500,
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        transition: 'background-color 0.12s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           <button
             onClick={handleResetDemo}
             title="Reload dashboard"
