@@ -1,5 +1,11 @@
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
 
+declare global {
+  interface Window {
+    gm_authFailure?: () => void;
+  }
+}
+
 export interface GoogleTrafficRouteResult {
   status: 'SUCCESS' | 'FAILED';
   trafficAwareDurationMin?: number;

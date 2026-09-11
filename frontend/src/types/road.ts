@@ -15,6 +15,7 @@ export interface RoadSegment {
   distance_km: number;
   travel_time_min: number;
   status: RoadStatus;
+  one_way?: boolean;
   coordinates: [number, number][];
 }
 

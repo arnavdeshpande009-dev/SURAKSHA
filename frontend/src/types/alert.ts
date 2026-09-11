@@ -20,14 +20,19 @@ export type IncidentType = 'FLOOD' | 'LANDSLIDE' | 'ROAD_DAMAGE' | 'HEAVY_RAINFA
 export type IncidentSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 export interface DemoIncident {
-  incident_id: string;
+  incident_id?: string;
+  id?: string;
   road_id: string;
-  type: IncidentType;
-  severity: IncidentSeverity;
-  latitude: number;
-  longitude: number;
+  type: IncidentType | string;
+  severity: IncidentSeverity | string;
+  latitude?: number;
+  longitude?: number;
+  coordinates?: [number, number];
   description: string;
-  timestamp: string;
+  timestamp?: string;
+  status?: string;
+  title?: string;
+  location?: string;
 }
 
 export interface AlertRuleConfig {

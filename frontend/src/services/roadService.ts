@@ -11,12 +11,16 @@ export interface OSMGraphNode {
   lon: number;
 }
 
+export interface OSMGraphEdge extends Omit<ExtendedRoadSegment, 'coordinates'> {
+  coordinates: [number, number][];
+}
+
 export interface OSMGraphData {
   nodes: OSMGraphNode[];
   edges: ExtendedRoadSegment[];
 }
 
-const osmGraph = osmGraphRaw as OSMGraphData;
+const osmGraph = osmGraphRaw as unknown as OSMGraphData;
 
 export class RoadNetworkService {
   static getLocations(): LocationNode[] {

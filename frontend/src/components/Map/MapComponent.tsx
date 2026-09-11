@@ -202,9 +202,11 @@ export const MapComponent: React.FC<MapProps> = ({
 
     incidentMarkersRef.current.forEach((marker) => marker.setMap(null));
     incidentMarkersRef.current = incidents.map((incident) => {
+      const lat = incident.latitude ?? (incident.coordinates ? incident.coordinates[1] : 26.0);
+      const lng = incident.longitude ?? (incident.coordinates ? incident.coordinates[0] : 92.0);
       const marker = new maps.Marker({
         map,
-        position: { lat: incident.latitude, lng: incident.longitude },
+        position: { lat, lng },
         title: incident.description,
         label: { text: '!', color: '#FFFFFF', fontWeight: 'bold' },
         icon: {
@@ -281,7 +283,7 @@ export const MapComponent: React.FC<MapProps> = ({
     turnMarkersRef.current = [];
     const path = googleRoutePath;
     if (path.length > 1) {
-      const routeColor = activeRoute.mode === 'SAFEST' ? '#16A34A' : '#1A73E8';
+      const routeColor = activeRoute?.mode === 'SAFEST' ? '#16A34A' : '#1A73E8';
       routeCasingRef.current = new maps.Polyline({
         map,
         path,

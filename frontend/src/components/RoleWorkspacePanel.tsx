@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, ClipboardList, MapPinned, ShieldCheck, Truck, Users, Activity, Eye } from 'lucide-react';
+import { AlertTriangle, ClipboardList, MapPinned, ShieldCheck, Truck, Users, Activity } from 'lucide-react';
 import type { FleetRole } from '../data/fleet';
 import type { DemoIncident } from '../types/alert';
 import { theme } from '../theme';
