@@ -139,15 +139,14 @@ export const MapComponent: React.FC<MapProps> = ({
     };
   }, []);
 
-  const routeCacheRef = useRef<Map<string, { polylinePath: google.maps.LatLngLiteral[]; directions: GoogleRouteStep[] }>>(new Map());
-  const activeRequestIdRef = useRef<number>(0);
-
   useEffect(() => {
     let cancelled = false;
     const origin = locations.find((location) => location.id === selectedOrigin);
     const destination = locations.find((location) => location.id === selectedDestination);
 
     if (!mapReady || !origin || !destination || activeRoute?.status !== 'SUCCESS') {
+      setGoogleRoutePath([]);
+      setRouteDirections([]);
       return () => { cancelled = true; };
     }
 
@@ -155,21 +154,10 @@ export const MapComponent: React.FC<MapProps> = ({
       segmentIndex === 0 ? segment.coordinates : segment.coordinates.slice(1)
     )).map(toLatLng);
 
-    // Compute route cache key based on mode, origin, destination and segments
-    const routeSegmentsKey = `${activeRoute.mode}:${selectedOrigin}->${selectedDestination}:${activeRoute.roadSegments.map(s => s.road_id).join(',')}`;
-    const cached = routeCacheRef.current.get(routeSegmentsKey);
-    if (cached) {
-      setGoogleRoutePath(cached.polylinePath);
-      setRouteDirections(cached.directions);
-      return () => { cancelled = true; };
-    }
-
-    // Set local road path immediately so user sees new route while Google Directions resolves
+    // Set active route OSM road segment coordinates directly on map polyline
     setGoogleRoutePath(localPath);
 
-    const requestId = ++activeRequestIdRef.current;
-
-    // Compute route through waypoints using Google Maps Directions API
+    // Compute turn-by-turn direction instructions
     const intermediateCoords = activeRoute.roadSegments
       .slice(0, -1)
       .map((segment) => locations.find((l) => l.id === segment.end_node)?.coordinates)
@@ -177,16 +165,11 @@ export const MapComponent: React.FC<MapProps> = ({
 
     googleMapsService.computeTrafficAwareRoute(origin.coordinates, destination.coordinates, intermediateCoords)
       .then((result) => {
-        if (!cancelled && requestId === activeRequestIdRef.current && result.status === 'SUCCESS' && (result.polylinePath?.length ?? 0) > 1) {
-          const entry = { polylinePath: result.polylinePath!, directions: result.directions ?? [] };
-          routeCacheRef.current.set(routeSegmentsKey, entry);
-          setGoogleRoutePath(entry.polylinePath);
-          setRouteDirections(entry.directions);
+        if (!cancelled && result.status === 'SUCCESS') {
+          setRouteDirections(result.directions ?? []);
         }
       })
-      .catch((err) => {
-        console.warn('Google Maps traffic-aware route computation failed, retained current route:', err);
-      });
+      .catch(() => undefined);
 
     return () => { cancelled = true; };
   }, [mapReady, activeRoute, selectedOrigin, selectedDestination, locations]);
