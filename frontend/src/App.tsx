@@ -133,18 +133,31 @@ export const App: React.FC = () => {
 
     const enrichRoadRisk = async () => {
       try {
-        const enrichedRoads = await Promise.all(roads.map(async (road) => {
-          const prediction = await backendService.predictRoadRisk(road);
+        // Sample key corridors (first 15 segments or primary highways) to prevent browser socket pool exhaustion
+        const targetRoads = roads.slice(0, 15);
+        const predictions = await Promise.all(
+          targetRoads.map((road) => backendService.predictRoadRisk(road).catch(() => null))
+        );
+
+        if (cancelled) return;
+
+        const predictionMap = new Map(
+          predictions.filter((p): p is NonNullable<typeof p> => p !== null).map((p) => [p.road_id, p])
+        );
+
+        const enrichedRoads = roads.map((road) => {
+          const pred = predictionMap.get(road.road_id);
+          if (!pred) return road;
           return {
             ...road,
             ai_risk: {
-              disruption_probability: prediction.disruption_probability,
-              risk_level: prediction.risk_level
+              disruption_probability: pred.disruption_probability,
+              risk_level: pred.risk_level
             }
           };
-        }));
+        });
 
-        if (!cancelled) setBackendRoads(enrichedRoads);
+        setBackendRoads(enrichedRoads);
       } catch {
         if (!cancelled) setBackendRoads(null);
       }
