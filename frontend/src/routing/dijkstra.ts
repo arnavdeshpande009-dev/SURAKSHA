@@ -45,7 +45,8 @@ export function findShortestPath(
   destinationId: string,
   graph: WeightedGraph,
   mode: RoutingMode = 'FASTEST',
-  config: RiskRoutingConfig = DEFAULT_RISK_ROUTING_CONFIG
+  config: RiskRoutingConfig = DEFAULT_RISK_ROUTING_CONFIG,
+  penaltyEdgeIds?: Set<string>
 ): RouteResult {
   const emptyMetrics: RouteRiskMetrics = { averageRisk: 0, maximumRisk: 0, routeRiskLevel: 'LOW' };
   const emptyETA: PredictedETA = { baseline_travel_time_min: 0, predicted_delay_min: 0, predicted_eta_min: 0 };
@@ -140,8 +141,11 @@ export function findShortestPath(
       for (const edge of currentNode.edges) {
         if (!unvisited.has(edge.targetNodeId)) continue;
 
-        const edgeCost = NetworkGraph.calculateRoadCost(edge, mode, config);
+        let edgeCost = NetworkGraph.calculateRoadCost(edge, mode, config);
         if (edgeCost === Infinity) continue;
+        if (penaltyEdgeIds?.has(edge.roadId)) {
+          edgeCost += 500;
+        }
 
         const altDistance = (distances.get(currentId) ?? Infinity) + edgeCost;
 

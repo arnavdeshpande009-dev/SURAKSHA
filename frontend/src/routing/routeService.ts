@@ -48,22 +48,35 @@ export class RouteService {
     roads?: ExtendedRoadSegment[]
   ): RouteComparisonResult {
     const fastest = this.calculateRoute(originId, destinationId, 'FASTEST', config, roads);
-    const safest = this.calculateRoute(originId, destinationId, 'SAFEST', config, roads);
+    let safest = this.calculateRoute(originId, destinationId, 'SAFEST', config, roads);
 
-    if (fastest.status !== 'SUCCESS' || safest.status !== 'SUCCESS') {
+    if (fastest.status !== 'SUCCESS') {
       return {
-        fastestRoute: fastest.status === 'SUCCESS' ? fastest : null,
+        fastestRoute: null,
         safestRoute: safest.status === 'SUCCESS' ? safest : null,
-        recommendedMode: 'FASTEST',
-        recommendationReason: fastest.message || safest.message || 'No route available',
+        recommendedMode: 'SAFEST',
+        recommendationReason: safest.message || 'No route available',
         timeDifferenceMin: 0,
         riskReduction: 0
       };
     }
 
-    const samePath = fastest.path.join('-') === safest.path.join('-');
-
+    // If initial safest path is identical to fastest, compute a distinct alternate route using penalty edges
+    const samePath = safest.status === 'SUCCESS' && fastest.path.join('-') === safest.path.join('-');
     if (samePath) {
+      const snappedOrigin = RoadNetworkService.snapToNearestNodeId(originId);
+      const snappedDest = RoadNetworkService.snapToNearestNodeId(destinationId);
+      const graph = this.getGraph(roads);
+      const fastestEdgeIds = new Set(fastest.roadSegments.map((s) => s.road_id));
+      const distinctSafest = findShortestPath(snappedOrigin, snappedDest, graph, 'SAFEST', config, fastestEdgeIds);
+      if (distinctSafest.status === 'SUCCESS') {
+        safest = distinctSafest;
+      }
+    }
+
+    const isDistinctPath = safest.status === 'SUCCESS' && fastest.path.join('-') !== safest.path.join('-');
+
+    if (!isDistinctPath) {
       return {
         fastestRoute: fastest,
         safestRoute: safest,
