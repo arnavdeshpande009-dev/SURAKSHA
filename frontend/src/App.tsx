@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import type { ExtendedRoadSegment } from './types/road';
-import type { RouteResult, RoutingMode } from './routing/types';
+import type { RouteResult, RoutingMode, RiskRoutingConfig } from './routing/types';
 import type { Alert, AlertStatus, DemoIncident } from './types/alert';
 import type { DemoStep } from './data/demoScenario';
 import type { FleetRole, SimulatedTruck } from './data/fleet';
@@ -10,11 +10,14 @@ import { Sidebar } from './components/Sidebar/Sidebar';
 import { Legend } from './components/Legend/Legend';
 import { RoadInfo } from './components/RoadInfo/RoadInfo';
 import { AlertDetailsModal } from './components/Alerts/AlertDetailsModal';
+import { FieldIncidentModal } from './components/Incidents/FieldIncidentModal';
 import { RoadNetworkService } from './services/roadService';
 import { RouteService } from './routing/routeService';
 import { AlertEngine } from './services/alertEngine';
 import { backendService } from './services/backendService';
 import { DEMO_INCIDENTS } from './data/demoIncidents';
+import type { Language } from './data/translations';
+import { DEFAULT_RISK_ROUTING_CONFIG } from './routing/graph';
 import { Compass, Database, RefreshCw, Truck } from 'lucide-react';
 import { theme } from './theme';
 import './App.css';
@@ -40,6 +43,10 @@ export const App: React.FC = () => {
   const [activeRole, setActiveRole] = useState<FleetRole>('DISPATCHER');
   const [trucks, setTrucks] = useState<SimulatedTruck[]>(INITIAL_TRUCKS);
   const [weatherSummary, setWeatherSummary] = useState<string>('Weather: loading');
+  const [cargoType, setCargoType] = useState<string>('MEDICAL_SUPPLIES');
+  const [language, setLanguage] = useState<Language>('en');
+  const [isFieldReportOpen, setIsFieldReportOpen] = useState<boolean>(false);
+  const [dynamicIncidents, setDynamicIncidents] = useState<DemoIncident[]>(DEMO_INCIDENTS);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -88,7 +95,7 @@ export const App: React.FC = () => {
   const [backendRoads, setBackendRoads] = useState<ExtendedRoadSegment[] | null>(null);
   const [backendEtas, setBackendEtas] = useState<Record<string, RouteResult['etaPrediction']>>({});
 
-  // Dynamically update road risk based on rainfall simulation step
+  // Dynamically update road risk based on rainfall simulation step or field incident
   const roads: ExtendedRoadSegment[] = useMemo(() => {
     const baseRoads = RoadNetworkService.getRoadSegments();
     if (rainfallSimulated || demoStep >= 1) {
@@ -158,11 +165,40 @@ export const App: React.FC = () => {
     return 'FASTEST';
   }, [userSelectedMode, demoStep]);
 
+  // Derive Cargo Criticality Risk Policy Config
+  const riskRoutingConfig: RiskRoutingConfig = useMemo(() => {
+    switch (cargoType) {
+      case 'MEDICAL_SUPPLIES':
+        return {
+          ...DEFAULT_RISK_ROUTING_CONFIG,
+          maxAcceptableExtraTimePercent: 80.0,
+          minRequiredRiskReduction: 0.05,
+          riskWeightMin: 500
+        };
+      case 'FOOD_ESSENTIALS':
+        return {
+          ...DEFAULT_RISK_ROUTING_CONFIG,
+          maxAcceptableExtraTimePercent: 40.0,
+          minRequiredRiskReduction: 0.10,
+          riskWeightMin: 350
+        };
+      case 'CONSTRUCTION_MATERIAL':
+        return {
+          ...DEFAULT_RISK_ROUTING_CONFIG,
+          maxAcceptableExtraTimePercent: 20.0,
+          minRequiredRiskReduction: 0.20,
+          riskWeightMin: 200
+        };
+      default:
+        return DEFAULT_RISK_ROUTING_CONFIG;
+    }
+  }, [cargoType]);
+
   // Compute both FASTEST and SAFEST routes and recommendation comparison
   const localComparisonResult = useMemo(() => {
     if (!origin || !destination) return null;
-    return RouteService.compareRoutes(origin, destination, undefined, activeRoads);
-  }, [origin, destination, activeRoads]);
+    return RouteService.compareRoutes(origin, destination, riskRoutingConfig, activeRoads);
+  }, [origin, destination, riskRoutingConfig, activeRoads]);
 
   useEffect(() => {
     let cancelled = false;
@@ -254,6 +290,31 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleFieldIncidentSubmitted = (newIncident: {
+    id: string;
+    road_id: string;
+    type: string;
+    severity: string;
+    title: string;
+    location: string;
+    coordinates: [number, number];
+    description: string;
+    photo_url?: string;
+  }) => {
+    const formatted: DemoIncident = {
+      id: newIncident.id,
+      road_id: newIncident.road_id,
+      type: newIncident.type as DemoIncident['type'],
+      severity: newIncident.severity as DemoIncident['severity'],
+      title: newIncident.title,
+      location: newIncident.location,
+      coordinates: newIncident.coordinates,
+      description: newIncident.description
+    };
+    setDynamicIncidents((prev) => [formatted, ...prev]);
+    setRainfallSimulated(true);
+  };
+
   // Demo Step advance handler
   const handleNextDemoStep = () => {
     if (demoStep === 0) {
@@ -289,6 +350,7 @@ export const App: React.FC = () => {
     setBackendEtas({});
     setOrigin('LOC-GAU');
     setDestination('LOC-AIZ');
+    setDynamicIncidents(DEMO_INCIDENTS);
     RouteService.resetGraphCache();
   };
 
@@ -411,7 +473,7 @@ export const App: React.FC = () => {
             selectedDestination={destination}
             activeRoute={activeRoute}
             comparisonResult={comparisonResult}
-            incidents={DEMO_INCIDENTS}
+            incidents={dynamicIncidents}
             onIncidentClick={handleIncidentClick}
           />
           <Legend />
@@ -421,6 +483,11 @@ export const App: React.FC = () => {
             onClose={() => setSelectedAlert(null)}
             onUpdateStatus={handleUpdateAlertStatus}
             onSwitchToSafestRoute={() => setUserSelectedMode('SAFEST')}
+          />
+          <FieldIncidentModal
+            isOpen={isFieldReportOpen}
+            onClose={() => setIsFieldReportOpen(false)}
+            onIncidentSubmitted={handleFieldIncidentSubmitted}
           />
         </div>
 
@@ -441,6 +508,11 @@ export const App: React.FC = () => {
           onNextDemoStep={handleNextDemoStep}
           onResetDemo={handleResetDemo}
           onTruckUpdated={(truck) => setTrucks((current) => current.map((item) => item.id === truck.id ? truck : item))}
+          cargoType={cargoType}
+          onCargoTypeChange={setCargoType}
+          language={language}
+          onLanguageChange={setLanguage}
+          onOpenFieldReport={() => setIsFieldReportOpen(true)}
         />
       </div>
 
@@ -468,3 +540,4 @@ export const App: React.FC = () => {
 };
 
 export default App;
+

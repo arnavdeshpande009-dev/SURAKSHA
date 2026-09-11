@@ -10,8 +10,10 @@ import { RoleWorkspacePanel } from '../RoleWorkspacePanel';
 import { DriverWorkspacePanel } from '../DriverWorkspacePanel';
 import type { FleetRole } from '../../data/fleet';
 import type { SimulatedTruck } from '../../data/fleet';
-import { Activity, ShieldCheck, Zap, Star, Bell, ShieldAlert, AlertTriangle, Info } from 'lucide-react';
+import { Activity, ShieldCheck, Zap, Star, Bell, ShieldAlert, AlertTriangle, Info, Globe, Package, PlusCircle, Brain } from 'lucide-react';
 import { theme } from '../../theme';
+import type { Language } from '../../data/translations';
+import { TRANSLATIONS } from '../../data/translations';
 
 const { color, radius, shadow } = theme;
 
@@ -31,6 +33,11 @@ interface SidebarProps {
   onNextDemoStep: () => void;
   onResetDemo: () => void;
   onTruckUpdated: (truck: SimulatedTruck) => void;
+  cargoType: string;
+  onCargoTypeChange: (cargo: string) => void;
+  language: Language;
+  onLanguageChange: (lang: Language) => void;
+  onOpenFieldReport: () => void;
 }
 
 const cardStyle: React.CSSProperties = {
@@ -66,7 +73,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNextDemoStep,
   onResetDemo,
   onTruckUpdated,
+  cargoType,
+  onCargoTypeChange,
+  language,
+  onLanguageChange,
+  onOpenFieldReport,
 }) => {
+  const t = TRANSLATIONS[language];
+
   const formatTime = (minutes: number) => {
     const totalMins = Math.round(minutes);
     const hrs = Math.floor(totalMins / 60);
@@ -80,6 +94,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const activeAlertsCount = alerts.filter((a) => a.status === 'ACTIVE').length;
 
   const activeRoute = selectedMode === 'SAFEST' ? safest : fastest;
+
+  // Derive feature factors for Explainable AI from active route segment inputs
+  const highestRiskSegment = activeRoute?.roadSegments.reduce(
+    (max, s) => (s.ai_risk?.disruption_probability ?? 0) > (max.ai_risk?.disruption_probability ?? 0) ? s : max,
+    activeRoute.roadSegments[0]
+  );
+
+  const rainfallFactor = demoStep >= 2 || highestRiskSegment?.status === 'RISKY' ? 'HIGH (>40mm/24h)' : 'LOW (12mm/24h)';
+  const slopeFactor = highestRiskSegment?.status === 'RISKY' ? 'HIGH (Steep Hill Pass 14°)' : 'MEDIUM (8°)';
+  const floodExposure = highestRiskSegment?.status === 'RISKY' ? 'MEDIUM (Flood History 2 events)' : 'LOW';
+  const landslideHistory = highestRiskSegment?.status === 'RISKY' ? 'HIGH (Frequent Monsoon Landslides)' : 'LOW';
+  const roadCondition = highestRiskSegment?.status === 'BLOCKED' ? 'POOR / IMPASSABLE' : highestRiskSegment?.status === 'RISKY' ? 'MEDIUM (Damaged Surface)' : 'GOOD';
 
   const getAlertIcon = (severity: string) => {
     switch (severity) {
@@ -107,19 +133,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }}>
       {/* Control Tower Header */}
       <div style={{
-        padding: '18px 20px',
+        padding: '16px 20px',
         borderBottom: `1px solid ${color.border}`,
-        backgroundColor: color.surface
+        backgroundColor: color.surface,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-          <Activity size={17} color={color.accent} />
-          <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, letterSpacing: '-0.01em', color: color.navy }}>
-            Control Tower Intelligence
-          </h2>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+            <Activity size={17} color={color.accent} />
+            <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, letterSpacing: '-0.01em', color: color.navy }}>
+              Control Tower Intelligence
+            </h2>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.75rem', color: color.textMuted }}>
+            Predict → Assess → Reroute → Alert → Deliver
+          </p>
         </div>
-        <p style={{ margin: 0, fontSize: '0.78rem', color: color.textMuted }}>
-          Predict → Assess → Reroute → Alert → Deliver
-        </p>
+
+        {/* Language selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <Globe size={13} color={color.accent} />
+          <select
+            value={language}
+            onChange={(e) => onLanguageChange(e.target.value as Language)}
+            style={{
+              backgroundColor: color.surfaceAlt,
+              border: `1px solid ${color.border}`,
+              borderRadius: radius.pill,
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              padding: '3px 6px',
+              color: color.textPrimary,
+              cursor: 'pointer'
+            }}
+          >
+            <option value="en">EN</option>
+            <option value="hi">हिंदी</option>
+            <option value="as">অসমীয়া</option>
+          </select>
+        </div>
       </div>
 
       <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
@@ -132,9 +186,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <RoleWorkspacePanel role={role} />
 
-        {/* 1. ROUTE SELECTION PANEL */}
+        {/* FIELD INCIDENT REPORT BUTTON */}
+        <button
+          onClick={onOpenFieldReport}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            padding: '10px 14px',
+            backgroundColor: color.surface,
+            border: `1px solid ${color.warning}`,
+            borderRadius: radius.md,
+            color: color.warning,
+            fontSize: '0.8rem',
+            fontWeight: 800,
+            cursor: 'pointer',
+            boxShadow: shadow.sm
+          }}
+        >
+          <PlusCircle size={16} /> Field Officer Incident Report
+        </button>
+
+        {/* 1. ROUTE & CARGO SELECTION PANEL */}
         <div style={cardStyle}>
-          <div style={sectionLabelStyle}>1. Shipment route selection</div>
+          <div style={sectionLabelStyle}>1. Shipment route &amp; cargo policy</div>
+          
           <RouteSelector
             locations={locations}
             origin={origin}
@@ -142,6 +219,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onOriginChange={onOriginChange}
             onDestinationChange={onDestinationChange}
           />
+
+          <div style={{ marginTop: '12px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 600, color: color.textMuted, marginBottom: '6px' }}>
+              <Package size={14} color={color.accent} /> Cargo Criticality Policy
+            </label>
+            <select
+              value={cargoType}
+              onChange={(e) => onCargoTypeChange(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                backgroundColor: color.surfaceAlt,
+                border: `1px solid ${color.border}`,
+                borderRadius: radius.sm,
+                color: color.textPrimary,
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              <option value="MEDICAL_SUPPLIES">{t.cargoMedical}</option>
+              <option value="FOOD_ESSENTIALS">{t.cargoFood}</option>
+              <option value="CONSTRUCTION_MATERIAL">{t.cargoConstruction}</option>
+              <option value="GENERAL_CARGO">{t.cargoGeneral}</option>
+            </select>
+          </div>
         </div>
 
         {/* EMPTY STATE WARNING */}
@@ -163,39 +266,54 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {/* 2. RISK INTELLIGENCE PANEL */}
+        {/* 2. EXPLAINABLE AI ASSESSMENT PANEL */}
         {activeRoute && activeRoute.status === 'SUCCESS' && (
           <div style={cardStyle}>
-            <div style={sectionLabelStyle}>2. Active route risk intelligence</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+              <span style={{ ...sectionLabelStyle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '6px', color: color.navy }}>
+                <Brain size={15} color={color.accent} /> {t.explainTitle}
+              </span>
+              <span style={{
+                fontSize: '0.7rem',
+                fontWeight: 800,
+                color: activeRoute.riskMetrics.routeRiskLevel === 'HIGH' ? color.danger : activeRoute.riskMetrics.routeRiskLevel === 'MEDIUM' ? color.warning : color.success,
+                backgroundColor: activeRoute.riskMetrics.routeRiskLevel === 'HIGH' ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)',
+                padding: '2px 8px',
+                borderRadius: radius.pill
+              }}>
+                {t.riskProbability}: {Math.round(activeRoute.riskMetrics.maximumRisk * 100)}% ({activeRoute.riskMetrics.routeRiskLevel})
+              </span>
+            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.85rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: color.textSecondary }}>Overall route risk:</span>
-                <span style={{
-                  fontWeight: 700,
-                  color: activeRoute.riskMetrics.routeRiskLevel === 'HIGH' ? color.danger :
-                         activeRoute.riskMetrics.routeRiskLevel === 'MEDIUM' ? color.warning : color.success
-                }}>
-                  {activeRoute.riskMetrics.routeRiskLevel} ({Math.round(activeRoute.riskMetrics.averageRisk * 100)}% avg)
-                </span>
-              </div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: color.textMuted, marginBottom: '8px', letterSpacing: '0.03em' }}>
+              {t.whyRisky}
+            </div>
 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.78rem', backgroundColor: color.surfaceAlt, padding: '10px', borderRadius: radius.md, marginBottom: '10px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: color.textSecondary }}>Highest hazard segment:</span>
-                <span style={{ fontWeight: 600, color: color.textPrimary }}>
-                  {activeRoute.roadSegments.reduce((max, s) => (s.ai_risk?.disruption_probability ?? 0) > (max.ai_risk?.disruption_probability ?? 0) ? s : max, activeRoute.roadSegments[0])?.road_id}
-                </span>
+                <span style={{ color: color.textMuted }}>Rainfall (24h):</span>
+                <span style={{ fontWeight: 700, color: rainfallFactor.includes('HIGH') ? color.danger : color.textPrimary }}>{rainfallFactor}</span>
               </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: color.textMuted }}>Terrain / Slope:</span>
+                <span style={{ fontWeight: 700, color: color.textPrimary }}>{slopeFactor}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: color.textMuted }}>Flood Exposure:</span>
+                <span style={{ fontWeight: 700, color: color.textPrimary }}>{floodExposure}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: color.textMuted }}>Historical Landslides:</span>
+                <span style={{ fontWeight: 700, color: landslideHistory.includes('HIGH') ? color.danger : color.textPrimary }}>{landslideHistory}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: color.textMuted }}>Road Condition:</span>
+                <span style={{ fontWeight: 700, color: roadCondition.includes('POOR') ? color.danger : color.textPrimary }}>{roadCondition}</span>
+              </div>
+            </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: color.textSecondary }}>Max segment disruption prob:</span>
-                <span style={{
-                  fontWeight: 700,
-                  color: activeRoute.riskMetrics.maximumRisk > 0.7 ? color.danger : color.warning
-                }}>
-                  {Math.round(activeRoute.riskMetrics.maximumRisk * 100)}%
-                </span>
-              </div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: color.accent, backgroundColor: color.accentSoft, padding: '8px 10px', borderRadius: radius.sm }}>
+              {t.recommendation}: {selectedMode === 'SAFEST' ? 'Utilizing SAFEST corridor bypass' : comparisonResult?.recommendedMode === 'SAFEST' ? 'Switch to SAFEST corridor' : 'FASTEST corridor meets risk threshold'}
             </div>
           </div>
         )}
@@ -243,7 +361,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: '8px', paddingTop: '6px', borderTop: `1px dashed ${color.border}` }}>
-                <span style={{ color: color.textMuted }}>Max risk:</span>
+                <span style={{ color: color.textMuted }}>Risk probability:</span>
                 <span style={{ color: fastest.riskMetrics.maximumRisk > 0.7 ? color.danger : color.warning, fontWeight: 700 }}>
                   {Math.round(fastest.riskMetrics.maximumRisk * 100)}% ({fastest.riskMetrics.routeRiskLevel})
                 </span>
@@ -288,7 +406,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: '8px', paddingTop: '6px', borderTop: `1px dashed ${color.border}` }}>
-                <span style={{ color: color.textMuted }}>Max risk:</span>
+                <span style={{ color: color.textMuted }}>Risk probability:</span>
                 <span style={{ color: color.success, fontWeight: 700 }}>
                   {Math.round(safest.riskMetrics.maximumRisk * 100)}% ({safest.riskMetrics.routeRiskLevel})
                 </span>
@@ -331,7 +449,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div style={cardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <span style={{ ...sectionLabelStyle, marginBottom: 0, color: color.textMuted, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Bell size={14} /> 5. Operational alerts
+              <Bell size={14} /> 5. Operational alerts ({language.toUpperCase()})
             </span>
             <span style={{
               fontSize: '0.7rem',
@@ -367,12 +485,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
                     <span style={{ fontWeight: 700, color: color.textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      {getAlertIcon(alert.severity)} {alert.title}
+                      {getAlertIcon(alert.severity)} {language === 'hi' && alert.severity === 'HIGH' ? t.highRiskAlert.title : language === 'as' && alert.severity === 'HIGH' ? t.highRiskAlert.title : alert.title}
                     </span>
                     <span style={{ fontSize: '0.675rem', color: color.textMuted }}>{alert.timestamp}</span>
                   </div>
                   <div style={{ color: color.textSecondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {alert.message}
+                    {language === 'hi' && alert.severity === 'HIGH' ? t.highRiskAlert.message : language === 'as' && alert.severity === 'HIGH' ? t.highRiskAlert.message : alert.message}
                   </div>
                 </div>
               ))
@@ -386,7 +504,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       </div>
 
-      {/* 6. EMERGENCY DEMO WALKTHROUGH: pinned below the scrollable alert content */}
+      {/* 6. EMERGENCY DEMO WALKTHROUGH */}
       <div style={{ padding: '0 16px 16px', flexShrink: 0 }}>
         <DemoWalkthroughPanel
           currentStep={demoStep}
@@ -397,3 +515,4 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </aside>
   );
 };
+

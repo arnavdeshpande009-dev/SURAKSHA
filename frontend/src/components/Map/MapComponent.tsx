@@ -24,8 +24,18 @@ interface MapProps {
 const NER_CENTER: [number, number] = [92.5, 25.8];
 const toLatLng = ([lng, lat]: [number, number]): google.maps.LatLngLiteral => ({ lat, lng });
 
-const getTruckPosition = (truck: SimulatedTruck): google.maps.LatLngLiteral => {
-  const path = truck.path;
+const getTruckPosition = (
+  truck: SimulatedTruck,
+  activeRoute?: RouteResult | null,
+  googleRoutePath: google.maps.LatLngLiteral[] = []
+): google.maps.LatLngLiteral => {
+  const isEmergencyTruck = truck.id === 'TRK-101' || truck.label.includes('204') || truck.label.includes('SURAKSHA');
+  const path: [number, number][] = (activeRoute && activeRoute.status === 'SUCCESS' && isEmergencyTruck)
+    ? (googleRoutePath.length > 0
+        ? googleRoutePath.map((p) => [p.lng, p.lat] as [number, number])
+        : activeRoute.roadSegments.flatMap((s) => s.coordinates))
+    : truck.path;
+
   if (path.length === 0) return toLatLng(NER_CENTER);
   if (path.length === 1) return toLatLng(path[0]);
 
@@ -224,7 +234,7 @@ export const MapComponent: React.FC<MapProps> = ({
 
     const activeTruckIds = new Set(trucks.map((truck) => truck.id));
     trucks.forEach((truck) => {
-      const position = getTruckPosition(truck);
+      const position = getTruckPosition(truck, activeRoute, googleRoutePath);
       const existingMarker = truckMarkersRef.current.get(truck.id);
       if (existingMarker) {
         existingMarker.setPosition(position);
@@ -256,7 +266,7 @@ export const MapComponent: React.FC<MapProps> = ({
         truckMarkersRef.current.delete(truckId);
       }
     });
-  }, [mapReady, trucks]);
+  }, [mapReady, trucks, activeRoute, googleRoutePath]);
 
   useEffect(() => {
     const map = mapRef.current;
