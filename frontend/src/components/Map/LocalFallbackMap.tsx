@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { RotateCcw, ShieldAlert, Layers } from 'lucide-react';
+import { RotateCcw, ShieldAlert, Layers, Navigation, Locate } from 'lucide-react';
 import type { ExtendedRoadSegment, LocationNode } from '../../types/road';
 import type { RouteResult, RouteComparisonResult } from '../../routing/types';
 import type { DemoIncident } from '../../types/alert';
@@ -18,15 +18,6 @@ export interface MapProps {
   onIncidentClick?: (incident: DemoIncident) => void;
 }
 
-// Bounding box for North Eastern Region map canvas projections
-// Lng: 88.0 to 96.0, Lat: 23.0 to 28.5
-const MAP_BOUNDS = {
-  minLng: 88.0,
-  maxLng: 96.0,
-  minLat: 23.0,
-  maxLat: 28.5
-};
-
 export const LocalFallbackMap: React.FC<MapProps> = ({
   roads,
   locations,
@@ -40,20 +31,61 @@ export const LocalFallbackMap: React.FC<MapProps> = ({
 }) => {
   const [showRisks, setShowRisks] = useState(true);
   const [showIncidents, setShowIncidents] = useState(true);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [userZoom, setUserZoom] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [followVehicle, setFollowVehicle] = useState(false);
 
-  // Convert longitude / latitude coordinates to SVG percentage coordinates (0-1000 width, 0-600 height)
+  const originLocation = useMemo(() => locations.find((l) => l.id === selectedOrigin), [locations, selectedOrigin]);
+  const destLocation = useMemo(() => locations.find((l) => l.id === selectedDestination), [locations, selectedDestination]);
+
+  // Compute dynamic route-focused bounding box for active mission corridor with padding
+  const viewportBounds = useMemo(() => {
+    const coords: [number, number][] = [];
+
+    if (activeRoute && activeRoute.status === 'SUCCESS' && activeRoute.roadSegments.length > 0) {
+      activeRoute.roadSegments.forEach((s) => s.coordinates.forEach((c) => coords.push(c)));
+    }
+    if (comparisonResult?.fastestRoute?.status === 'SUCCESS') {
+      comparisonResult.fastestRoute.roadSegments.forEach((s) => s.coordinates.forEach((c) => coords.push(c)));
+    }
+    if (comparisonResult?.safestRoute?.status === 'SUCCESS') {
+      comparisonResult.safestRoute.roadSegments.forEach((s) => s.coordinates.forEach((c) => coords.push(c)));
+    }
+    if (originLocation) coords.push(originLocation.coordinates);
+    if (destLocation) coords.push(destLocation.coordinates);
+
+    if (coords.length === 0) {
+      return { minLng: 88.0, maxLng: 96.0, minLat: 23.0, maxLat: 28.5 };
+    }
+
+    let minLng = Math.min(...coords.map((c) => c[0]));
+    let maxLng = Math.max(...coords.map((c) => c[0]));
+    let minLat = Math.min(...coords.map((c) => c[1]));
+    let maxLat = Math.max(...coords.map((c) => c[1]));
+
+    // Add 25% padding buffer around route corridor
+    const lngPad = Math.max(0.4, (maxLng - minLng) * 0.25);
+    const latPad = Math.max(0.3, (maxLat - minLat) * 0.25);
+
+    // Account for right sidebar offset by pushing maxLng right padding
+    return {
+      minLng: minLng - lngPad * 0.8,
+      maxLng: maxLng + lngPad * 1.4,
+      minLat: minLat - latPad,
+      maxLat: maxLat + latPad
+    };
+  }, [activeRoute, comparisonResult, originLocation, destLocation]);
+
+  // Dynamic projection from lat/lng to SVG viewport (1000 x 600)
   const projectCoord = ([lng, lat]: [number, number]): { x: number; y: number } => {
-    const normX = (lng - MAP_BOUNDS.minLng) / (MAP_BOUNDS.maxLng - MAP_BOUNDS.minLng);
-    const normY = (MAP_BOUNDS.maxLat - lat) / (MAP_BOUNDS.maxLat - MAP_BOUNDS.minLat); // Flip Y for SVG
+    const normX = (lng - viewportBounds.minLng) / (viewportBounds.maxLng - viewportBounds.minLng || 1);
+    const normY = (viewportBounds.maxLat - lat) / (viewportBounds.maxLat - viewportBounds.minLat || 1);
     return {
       x: normX * 1000,
       y: normY * 600
     };
   };
 
-  // Convert array of coordinates to SVG polyline path data string
   const toPathString = (coords: [number, number][]): string => {
     return coords.map((c, i) => {
       const p = projectCoord(c);
@@ -61,13 +93,21 @@ export const LocalFallbackMap: React.FC<MapProps> = ({
     }).join(' ');
   };
 
-  // Active route road ID set for quick highlighting
+  // Filter roads within corridor viewport for maximum SVG performance
+  const corridorRoads = useMemo(() => {
+    return roads.filter((r) => {
+      return r.coordinates.some(([lng, lat]) => (
+        lng >= viewportBounds.minLng - 1 && lng <= viewportBounds.maxLng + 1 &&
+        lat >= viewportBounds.minLat - 1 && lat <= viewportBounds.maxLat + 1
+      ));
+    });
+  }, [roads, viewportBounds]);
+
   const activeRoadIds = useMemo(() => {
     if (!activeRoute || activeRoute.status !== 'SUCCESS') return new Set<string>();
     return new Set(activeRoute.roadSegments.map((s) => s.road_id));
   }, [activeRoute]);
 
-  // Alternate route road IDs
   const alternateRoadIds = useMemo(() => {
     if (!comparisonResult) return new Set<string>();
     const altRoute = activeRoute?.mode === 'SAFEST' ? comparisonResult.fastestRoute : comparisonResult.safestRoute;
@@ -75,7 +115,6 @@ export const LocalFallbackMap: React.FC<MapProps> = ({
     return new Set(altRoute.roadSegments.map((s) => s.road_id));
   }, [comparisonResult, activeRoute]);
 
-  // Calculate truck position along active route geometry
   const getTruckPos = (truck: SimulatedTruck): { x: number; y: number } => {
     const isEmergencyTruck = truck.id === 'TRK-101' || truck.label.includes('204') || truck.label.includes('SURAKSHA');
     const path: [number, number][] = (activeRoute && activeRoute.status === 'SUCCESS' && isEmergencyTruck)
@@ -97,169 +136,171 @@ export const LocalFallbackMap: React.FC<MapProps> = ({
         const start = path[index];
         const end = path[index + 1];
         const ratio = distances[index] === 0 ? 0 : remaining / distances[index];
-        const lng = start[0] + (end[0] - start[0]) * ratio;
-        const lat = start[1] + (end[1] - start[1]) * ratio;
-        return projectCoord([lng, lat]);
+        return projectCoord([
+          start[0] + (end[0] - start[0]) * ratio,
+          start[1] + (end[1] - start[1]) * ratio
+        ]);
       }
       remaining -= distances[index];
     }
     return projectCoord(path[path.length - 1]);
   };
 
-  const handleZoomIn = () => setZoomLevel((z) => Math.min(z + 0.25, 2.5));
-  const handleZoomOut = () => setZoomLevel((z) => Math.max(z - 0.25, 0.8));
-  const handleResetView = () => { setZoomLevel(1); setPanOffset({ x: 0, y: 0 }); };
-
-  const originLocation = locations.find((l) => l.id === selectedOrigin);
-  const destLocation = locations.find((l) => l.id === selectedDestination);
+  const handleZoomIn = () => setUserZoom((z) => Math.min(z + 0.25, 2.5));
+  const handleZoomOut = () => setUserZoom((z) => Math.max(z - 0.25, 0.7));
+  const handleResetView = () => { setUserZoom(1); setPanOffset({ x: 0, y: 0 }); setFollowVehicle(false); };
 
   return (
     <div style={{
       position: 'relative',
       width: '100%',
       height: '100%',
-      backgroundColor: '#0B132B',
-      color: '#F8FAFC',
+      backgroundColor: '#F1F5F9', // Clean light navigation basemap background
+      color: '#0F172A',
       overflow: 'hidden',
       fontFamily: 'Inter, system-ui, sans-serif'
     }}>
-      {/* Top Banner indicating SURAKSHA Local Map active */}
+      {/* Top Banner: Navigation status & mode indicator */}
       <div style={{
         position: 'absolute',
-        top: '12px',
+        top: '14px',
         left: '18px',
-        zIndex: 20,
+        zIndex: 25,
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
-        backgroundColor: 'rgba(15, 23, 42, 0.85)',
-        backdropFilter: 'blur(8px)',
-        border: '1px solid #1E293B',
+        gap: '10px',
+        backgroundColor: '#FFFFFF',
+        border: '1px solid #CBD5E1',
         padding: '6px 14px',
         borderRadius: '20px',
-        boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-        fontSize: '0.72rem',
+        boxShadow: '0 4px 14px rgba(15, 23, 42, 0.08)',
+        fontSize: '0.75rem',
         fontWeight: 700,
-        color: '#38BDF8'
+        color: '#0F172A'
       }}>
-        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#38BDF8', boxShadow: '0 0 8px #38BDF8' }} />
-        SURAKSHA LOCAL DEMO MAP
-        <span style={{ color: '#64748B', fontWeight: 500, fontSize: '0.68rem', marginLeft: '4px' }}>
-          (OSM Vector Engine · Offline Capable)
+        <span style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: '#2563EB', boxShadow: '0 0 6px #2563EB' }} />
+        SURAKSHA LOCAL MAP ENGINE
+        <span style={{ color: '#64748B', fontWeight: 600, fontSize: '0.7rem' }}>
+          • Corridors: {originLocation?.name || 'Origin'} → {destLocation?.name || 'Destination'}
         </span>
       </div>
 
-      {/* Map Control Buttons */}
-      <div style={{ position: 'absolute', top: '12px', right: '18px', display: 'flex', gap: '8px', zIndex: 20 }}>
+      {/* Map Control Toolbar */}
+      <div style={{ position: 'absolute', top: '14px', right: '18px', display: 'flex', gap: '8px', zIndex: 25 }}>
         <button
-          onClick={() => setShowRisks((r) => !r)}
+          onClick={() => setFollowVehicle((f) => !f)}
           style={{
-            backgroundColor: showRisks ? '#0369A1' : '#1E293B',
-            color: '#FFFFFF',
-            border: '1px solid #334155',
+            backgroundColor: followVehicle ? '#2563EB' : '#FFFFFF',
+            color: followVehicle ? '#FFFFFF' : '#334155',
+            border: '1px solid #CBD5E1',
             borderRadius: '6px',
             padding: '6px 10px',
             fontSize: '0.72rem',
-            fontWeight: 600,
+            fontWeight: 700,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '4px'
+            gap: '4px',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.05)'
           }}
         >
-          <ShieldAlert size={13} /> {showRisks ? 'Hide Risk Overlays' : 'Show Risk Overlays'}
+          <Locate size={13} /> {followVehicle ? 'Following Truck' : 'Focus Vehicle'}
+        </button>
+        <button
+          onClick={() => setShowRisks((r) => !r)}
+          style={{
+            backgroundColor: showRisks ? '#0284C7' : '#FFFFFF',
+            color: showRisks ? '#FFFFFF' : '#334155',
+            border: '1px solid #CBD5E1',
+            borderRadius: '6px',
+            padding: '6px 10px',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.05)'
+          }}
+        >
+          <ShieldAlert size={13} /> {showRisks ? 'Risks On' : 'Risks Off'}
         </button>
         <button
           onClick={() => setShowIncidents((i) => !i)}
           style={{
-            backgroundColor: showIncidents ? '#0369A1' : '#1E293B',
-            color: '#FFFFFF',
-            border: '1px solid #334155',
+            backgroundColor: showIncidents ? '#0284C7' : '#FFFFFF',
+            color: showIncidents ? '#FFFFFF' : '#334155',
+            border: '1px solid #CBD5E1',
             borderRadius: '6px',
             padding: '6px 10px',
             fontSize: '0.72rem',
-            fontWeight: 600,
+            fontWeight: 700,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '4px'
+            gap: '4px',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.05)'
           }}
         >
-          <Layers size={13} /> {showIncidents ? 'Hide Incidents' : 'Show Incidents'}
+          <Layers size={13} /> {showIncidents ? 'Incidents On' : 'Incidents Off'}
         </button>
-        <button onClick={handleResetView} title="Reset View" style={{ backgroundColor: '#1E293B', color: '#FFFFFF', border: '1px solid #334155', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer' }}>
+        <button onClick={handleResetView} title="Fit Route Corridor" style={{ backgroundColor: '#FFFFFF', color: '#334155', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer' }}>
           <RotateCcw size={14} />
         </button>
-        <button onClick={handleZoomIn} title="Zoom In" style={{ backgroundColor: '#1E293B', color: '#FFFFFF', border: '1px solid #334155', borderRadius: '6px', padding: '6px 10px', fontWeight: 800, cursor: 'pointer' }}>
+        <button onClick={handleZoomIn} title="Zoom In" style={{ backgroundColor: '#FFFFFF', color: '#334155', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '6px 10px', fontWeight: 800, cursor: 'pointer' }}>
           +
         </button>
-        <button onClick={handleZoomOut} title="Zoom Out" style={{ backgroundColor: '#1E293B', color: '#FFFFFF', border: '1px solid #334155', borderRadius: '6px', padding: '6px 10px', fontWeight: 800, cursor: 'pointer' }}>
+        <button onClick={handleZoomOut} title="Zoom Out" style={{ backgroundColor: '#FFFFFF', color: '#334155', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '6px 10px', fontWeight: 800, cursor: 'pointer' }}>
           -
         </button>
       </div>
 
-      {/* SVG Canvas Map Layer */}
+      {/* Main Vector Map SVG Layer */}
       <div style={{
         width: '100%',
         height: '100%',
-        transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+        transform: `scale(${userZoom}) translate(${panOffset.x}px, ${panOffset.y}px)`,
         transformOrigin: 'center center',
-        transition: 'transform 0.15s ease-out'
+        transition: 'transform 0.2s ease-out'
       }}>
         <svg width="100%" height="100%" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid slice" style={{ display: 'block' }}>
           <defs>
-            {/* Grid background pattern */}
-            <pattern id="gridPattern" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="1" />
-            </pattern>
-            {/* Glow filters */}
-            <filter id="glowRoute" x="-20%" y="-20%" width="140%" height="140%">
+            <filter id="routeGlow" x="-20%" y="-20%" width="140%" height="140%">
               <feGaussianBlur stdDeviation="3" result="blur" />
               <feComposite in="SourceGraphic" in2="blur" operator="over" />
             </filter>
           </defs>
 
-          {/* Background & Grid */}
-          <rect width="1000" height="600" fill="#0B132B" />
-          <rect width="1000" height="600" fill="url(#gridPattern)" />
+          {/* Clean Light Basemap Background */}
+          <rect width="1000" height="600" fill="#F8FAFC" />
 
-          {/* State / Region Outlines & Water features representation */}
-          <path d="M 120 180 Q 250 150 450 190 T 850 160" fill="none" stroke="rgba(56, 189, 248, 0.08)" strokeWidth="12" />
-          <text x="140" y="140" fill="rgba(255,255,255,0.12)" fontSize="18" fontWeight="800" letterSpacing="0.1em">ASSAM</text>
-          <text x="350" y="320" fill="rgba(255,255,255,0.10)" fontSize="16" fontWeight="800" letterSpacing="0.1em">MEGHALAYA</text>
-          <text x="600" y="460" fill="rgba(255,255,255,0.10)" fontSize="16" fontWeight="800" letterSpacing="0.1em">MIZORAM</text>
-          <text x="750" y="360" fill="rgba(255,255,255,0.10)" fontSize="16" fontWeight="800" letterSpacing="0.1em">MANIPUR</text>
-          <text x="780" y="240" fill="rgba(255,255,255,0.10)" fontSize="16" fontWeight="800" letterSpacing="0.1em">NAGALAND</text>
-          <text x="420" y="520" fill="rgba(255,255,255,0.10)" fontSize="16" fontWeight="800" letterSpacing="0.1em">TRIPURA</text>
-
-          {/* 1. Base Inactive Road Network */}
-          {roads.map((road) => {
+          {/* 1. Base OSM Road Network */}
+          {corridorRoads.map((road) => {
             const isActive = activeRoadIds.has(road.road_id);
             const isAlternate = alternateRoadIds.has(road.road_id);
-            if (isActive || isAlternate) return null; // Render active/alternate routes on top
+            if (isActive || isAlternate) return null;
 
             const isBlocked = road.status === 'BLOCKED';
             const isRisky = road.status === 'RISKY';
-            const strokeColor = isBlocked ? '#EF4444' : isRisky ? '#F59E0B' : 'rgba(148, 163, 184, 0.22)';
+            const strokeColor = isBlocked ? '#EF4444' : isRisky ? '#F59E0B' : '#CBD5E1';
             const strokeDash = isBlocked ? '6 4' : undefined;
 
             return (
-              <g key={`road-${road.road_id}`}>
-                <path
-                  d={toPathString(road.coordinates)}
-                  fill="none"
-                  stroke={strokeColor}
-                  strokeWidth={isRisky ? 3 : 2}
-                  strokeDasharray={strokeDash}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </g>
+              <path
+                key={`road-${road.road_id}`}
+                d={toPathString(road.coordinates)}
+                fill="none"
+                stroke={strokeColor}
+                strokeWidth={isRisky ? 4 : 2}
+                strokeDasharray={strokeDash}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             );
           })}
 
-          {/* 2. Alternate Route Layer */}
-          {roads.map((road) => {
+          {/* 2. Alternate Route Polyline */}
+          {corridorRoads.map((road) => {
             if (!alternateRoadIds.has(road.road_id)) return null;
             return (
               <path
@@ -267,7 +308,7 @@ export const LocalFallbackMap: React.FC<MapProps> = ({
                 d={toPathString(road.coordinates)}
                 fill="none"
                 stroke="#64748B"
-                strokeWidth="5"
+                strokeWidth="6"
                 strokeDasharray="8 6"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -276,31 +317,31 @@ export const LocalFallbackMap: React.FC<MapProps> = ({
             );
           })}
 
-          {/* 3. Active Selected Route Layer */}
-          {roads.map((road) => {
+          {/* 3. Primary Active Route Polyline (Google Blue or Safest Green) */}
+          {corridorRoads.map((road) => {
             if (!activeRoadIds.has(road.road_id)) return null;
-            const routeColor = activeRoute?.mode === 'SAFEST' ? '#10B981' : '#3B82F6';
-            const casingColor = activeRoute?.mode === 'SAFEST' ? '#047857' : '#1D4ED8';
+            const routeColor = activeRoute?.mode === 'SAFEST' ? '#16A34A' : '#1D4ED8';
+            const casingColor = activeRoute?.mode === 'SAFEST' ? '#15803D' : '#1E40AF';
 
             return (
               <g key={`active-road-${road.road_id}`}>
-                {/* Route Casing / Outer Glow */}
+                {/* Polyline Casing */}
                 <path
                   d={toPathString(road.coordinates)}
                   fill="none"
                   stroke={casingColor}
-                  strokeWidth="10"
+                  strokeWidth="11"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   opacity="0.9"
-                  filter="url(#glowRoute)"
+                  filter="url(#routeGlow)"
                 />
-                {/* Inner Core Polyline */}
+                {/* Polyline Inner */}
                 <path
                   d={toPathString(road.coordinates)}
                   fill="none"
                   stroke={routeColor}
-                  strokeWidth="5"
+                  strokeWidth="6"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
@@ -308,29 +349,29 @@ export const LocalFallbackMap: React.FC<MapProps> = ({
             );
           })}
 
-          {/* 4. Risk Overlays */}
-          {showRisks && roads.map((road) => {
+          {/* 4. Risk Zone Overlays */}
+          {showRisks && corridorRoads.map((road) => {
             if (road.status !== 'RISKY' && road.status !== 'BLOCKED') return null;
             const centerIdx = Math.floor(road.coordinates.length / 2);
             const pt = projectCoord(road.coordinates[centerIdx] || [92, 25]);
             const isBlocked = road.status === 'BLOCKED';
 
             return (
-              <g key={`risk-overlay-${road.road_id}`}>
+              <g key={`risk-${road.road_id}`}>
                 <circle
                   cx={pt.x}
                   cy={pt.y}
-                  r={isBlocked ? "24" : "18"}
-                  fill={isBlocked ? "rgba(239, 68, 68, 0.25)" : "rgba(245, 158, 11, 0.22)"}
-                  stroke={isBlocked ? "#EF4444" : "#F59E0B"}
-                  strokeWidth="1.5"
+                  r={isBlocked ? "22" : "16"}
+                  fill={isBlocked ? "rgba(239, 68, 68, 0.20)" : "rgba(245, 158, 11, 0.18)"}
+                  stroke={isBlocked ? "#DC2626" : "#D97706"}
+                  strokeWidth="2"
                   strokeDasharray="4 2"
                 />
               </g>
             );
           })}
 
-          {/* 5. Incidents Markers */}
+          {/* 5. Incident Hazards */}
           {showIncidents && incidents.map((incident) => {
             const lat = incident.latitude ?? (incident.coordinates ? incident.coordinates[1] : 25.5);
             const lng = incident.longitude ?? (incident.coordinates ? incident.coordinates[0] : 92.5);
@@ -343,97 +384,99 @@ export const LocalFallbackMap: React.FC<MapProps> = ({
                 onClick={() => onIncidentClick?.(incident)}
                 style={{ cursor: 'pointer' }}
               >
-                <circle cx={pt.x} cy={pt.y} r="10" fill={isCritical ? "#DC2626" : "#D97706"} stroke="#FFFFFF" strokeWidth="2" />
-                <text x={pt.x} y={pt.y + 4} textAnchor="middle" fill="#FFFFFF" fontSize="10" fontWeight="900">!</text>
+                <circle cx={pt.x} cy={pt.y} r="12" fill={isCritical ? "#DC2626" : "#D97706"} stroke="#FFFFFF" strokeWidth="2.5" />
+                <text x={pt.x} y={pt.y + 4} textAnchor="middle" fill="#FFFFFF" fontSize="11" fontWeight="900">!</text>
               </g>
             );
           })}
 
-          {/* 6. Location Nodes */}
+          {/* 6. Corridor Locations (Origin & Destination Navigation Cards) */}
           {locations.map((loc) => {
             const pt = projectCoord(loc.coordinates);
             const isOrigin = loc.id === selectedOrigin;
             const isDest = loc.id === selectedDestination;
-            const fill = isOrigin ? '#16A34A' : isDest ? '#DC2626' : '#2563EB';
+            if (!isOrigin && !isDest) return null; // Only render active mission Origin and Destination pins
+
+            const pinColor = isOrigin ? '#16A34A' : '#DC2626';
 
             return (
-              <g key={`loc-${loc.id}`}>
-                <circle cx={pt.x} cy={pt.y} r={isOrigin || isDest ? "8" : "5"} fill={fill} stroke="#FFFFFF" strokeWidth="2" />
-                <text
-                  x={pt.x}
-                  y={pt.y - 12}
-                  textAnchor="middle"
-                  fill="#F8FAFC"
-                  fontSize={isOrigin || isDest ? "12" : "10"}
-                  fontWeight={isOrigin || isDest ? "800" : "600"}
-                  style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}
-                >
-                  {loc.name} {isOrigin ? '(Origin)' : isDest ? '(Dest)' : ''}
+              <g key={`loc-pin-${loc.id}`}>
+                {/* Pin Shadow */}
+                <ellipse cx={pt.x} cy={pt.y + 4} rx="8" ry="4" fill="rgba(0,0,0,0.2)" />
+                {/* Pin Circle */}
+                <circle cx={pt.x} cy={pt.y} r="10" fill={pinColor} stroke="#FFFFFF" strokeWidth="3" />
+                <text x={pt.x} y={pt.y + 4} textAnchor="middle" fill="#FFFFFF" fontSize="10" fontWeight="900">
+                  {isOrigin ? 'A' : 'B'}
                 </text>
+                {/* Navigation Location Label Box */}
+                <g transform={`translate(${pt.x}, ${pt.y - 20})`}>
+                  <rect x="-45" y="-14" width="90" height="20" rx="4" fill="#0F172A" opacity="0.9" />
+                  <text x="0" y="0" textAnchor="middle" fill="#FFFFFF" fontSize="10" fontWeight="800">
+                    {loc.name}
+                  </text>
+                </g>
               </g>
             );
           })}
 
-          {/* 7. Live Vehicle Markers */}
+          {/* 7. Active Vehicle Marker (SURAKSHA Truck Telemetry) */}
           {trucks.map((truck) => {
             const pt = getTruckPos(truck);
             return (
-              <g key={`truck-${truck.id}`}>
-                <circle cx={pt.x} cy={pt.y} r="12" fill={truck.color} stroke="#FFFFFF" strokeWidth="3" />
-                <text x={pt.x} y={pt.y + 3} textAnchor="middle" fill="#FFFFFF" fontSize="9" fontWeight="900">
-                  {truck.label.includes('204') ? '204' : '▰'}
+              <g key={`truck-marker-${truck.id}`}>
+                <circle cx={pt.x} cy={pt.y} r="14" fill={truck.color} stroke="#FFFFFF" strokeWidth="3" />
+                <text x={pt.x} y={pt.y + 4} textAnchor="middle" fill="#FFFFFF" fontSize="10" fontWeight="900">
+                  ▰
                 </text>
-                <text
-                  x={pt.x}
-                  y={pt.y + 24}
-                  textAnchor="middle"
-                  fill="#38BDF8"
-                  fontSize="10"
-                  fontWeight="800"
-                  style={{ textShadow: '0 2px 4px rgba(0,0,0,0.9)' }}
-                >
-                  {truck.label}
-                </text>
+                {/* Vehicle Pill */}
+                <g transform={`translate(${pt.x}, ${pt.y + 24})`}>
+                  <rect x="-40" y="-12" width="80" height="18" rx="9" fill="#1E293B" stroke="#FFFFFF" strokeWidth="1.5" />
+                  <text x="0" y="1" textAnchor="middle" fill="#38BDF8" fontSize="9" fontWeight="800">
+                    {truck.label}
+                  </text>
+                </g>
               </g>
             );
           })}
         </svg>
       </div>
 
-      {/* Legend & Summary Info Box */}
+      {/* Compact Route Navigation Overlay Panel */}
       <div style={{
         position: 'absolute',
-        bottom: '16px',
+        bottom: '18px',
         left: '18px',
-        backgroundColor: 'rgba(15, 23, 42, 0.88)',
-        backdropFilter: 'blur(8px)',
-        border: '1px solid #1E293B',
-        padding: '10px 14px',
-        borderRadius: '10px',
-        fontSize: '0.72rem',
-        color: '#94A3B8',
-        boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+        backgroundColor: '#FFFFFF',
+        border: '1px solid #CBD5E1',
+        padding: '12px 16px',
+        borderRadius: '12px',
+        fontSize: '0.78rem',
+        color: '#0F172A',
+        boxShadow: '0 4px 18px rgba(15, 23, 42, 0.12)',
         display: 'flex',
         flexDirection: 'column',
-        gap: '6px'
+        gap: '8px',
+        minWidth: '260px'
       }}>
-        <div style={{ fontWeight: 800, color: '#F8FAFC', marginBottom: '2px' }}>
-          MISSION CORRIDOR: {originLocation?.name || selectedOrigin} → {destLocation?.name || selectedDestination}
-        </div>
-        <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ width: '12px', height: '4px', borderRadius: '2px', backgroundColor: activeRoute?.mode === 'SAFEST' ? '#10B981' : '#3B82F6' }} />
-            Active ({activeRoute?.mode || 'FASTEST'})
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ width: '12px', height: '4px', borderRadius: '2px', backgroundColor: '#64748B' }} />
-            Alternate
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#EF4444' }} />
-            Blocked Hazard
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '6px' }}>
+          <div style={{ fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Navigation size={15} color="#2563EB" />
+            {originLocation?.name || 'Origin'} → {destLocation?.name || 'Destination'}
+          </div>
+          <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#2563EB', backgroundColor: '#EFF6FF', padding: '2px 6px', borderRadius: '4px' }}>
+            {activeRoute?.mode || 'FASTEST'}
           </span>
         </div>
+
+        {activeRoute && activeRoute.status === 'SUCCESS' && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
+            <span>ETA: {Math.floor(activeRoute.totalTravelTimeMin / 60)}h {activeRoute.totalTravelTimeMin % 60}m</span>
+            <span>Distance: {activeRoute.totalDistanceKm.toFixed(1)} km</span>
+            <span style={{ color: activeRoute.riskMetrics.routeRiskLevel === 'HIGH' ? '#DC2626' : '#16A34A' }}>
+              Risk: {activeRoute.riskMetrics.routeRiskLevel}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
