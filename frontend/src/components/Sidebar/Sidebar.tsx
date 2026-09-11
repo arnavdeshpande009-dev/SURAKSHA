@@ -283,7 +283,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 padding: '2px 8px',
                 borderRadius: radius.pill
               }}>
-                {t.riskProbability}: {Math.round(activeRoute.riskMetrics.maximumRisk * 100)}% ({activeRoute.riskMetrics.routeRiskLevel})
+                {t.riskProbability}: {Math.round(activeRoute.riskMetrics.averageRisk * 100)}% ({activeRoute.riskMetrics.routeRiskLevel})
               </span>
             </div>
 
@@ -364,8 +364,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: '8px', paddingTop: '6px', borderTop: `1px dashed ${color.border}` }}>
                 <span style={{ color: color.textMuted }}>Risk probability:</span>
-                <span style={{ color: fastest.riskMetrics.maximumRisk > 0.7 ? color.danger : color.warning, fontWeight: 700 }}>
-                  {Math.round(fastest.riskMetrics.maximumRisk * 100)}% ({fastest.riskMetrics.routeRiskLevel})
+                <span style={{ color: fastest.riskMetrics.averageRisk > 0.15 ? color.danger : color.warning, fontWeight: 700 }}>
+                  {Math.round(fastest.riskMetrics.averageRisk * 100)}% ({fastest.riskMetrics.routeRiskLevel})
                 </span>
               </div>
             </div>
@@ -410,7 +410,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: '8px', paddingTop: '6px', borderTop: `1px dashed ${color.border}` }}>
                 <span style={{ color: color.textMuted }}>Risk probability:</span>
                 <span style={{ color: color.success, fontWeight: 700 }}>
-                  {Math.round(safest.riskMetrics.maximumRisk * 100)}% ({safest.riskMetrics.routeRiskLevel})
+                  {Math.round(safest.riskMetrics.averageRisk * 100)}% ({safest.riskMetrics.routeRiskLevel})
                 </span>
               </div>
             </div>
