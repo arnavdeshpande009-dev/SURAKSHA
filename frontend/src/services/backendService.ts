@@ -36,19 +36,13 @@ interface ETARequest {
 }
 
 export interface WeatherSnapshot {
-  location?: { latitude: number; longitude: number };
-  latitude?: number;
-  longitude?: number;
-  temperature_c?: number;
-  rainfall_mm?: number;
-  precipitation_probability?: number;
-  weather_code?: number;
-  wind_speed_kmh?: number;
-  wind_kph?: number;
-  source?: string;
-  observed_at?: string;
-  timestamp?: string;
-  status?: string;
+  latitude: number;
+  longitude: number;
+  temperature_c: number;
+  rainfall_mm: number;
+  wind_kph: number;
+  source: string;
+  observed_at: string;
 }
 
 export interface DashboardSummary {

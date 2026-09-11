@@ -12,45 +12,6 @@ In the North Eastern Region (NER) of India, severe weather (monsoon heavy rainfa
 
 ---
 
-## 🌐 LIVE PRODUCTION DEPLOYMENT
-
-- **Live Production Frontend**: [https://suraksha-9pfb.onrender.com](https://suraksha-9pfb.onrender.com)
-
-### Required Environment Variables
-
-#### Frontend (Render / Local `.env`)
-- `VITE_API_URL`: Backend API base URL (e.g. `https://suraksha-backend.onrender.com/api` or `http://127.0.0.1:8000/api`)
-- `VITE_GOOGLE_MAPS_API_KEY`: Google Maps JavaScript & Routes API Key
-
-#### Backend (Render / Local Environment)
-- `SURAKSHA_AUTH_SECRET`: Secret key for JWT signing
-- `SURAKSHA_ALLOWED_ORIGINS`: Comma-separated CORS allowed origins (e.g. `https://suraksha-9pfb.onrender.com,http://localhost:5173`)
-
-### 🔑 Required Google Cloud Console Setup
-
-To ensure Google Maps loads properly without rejection on production domains:
-1. **Enable Google Cloud APIs**:
-   - **Maps JavaScript API**
-   - **Routes API**
-2. **Billing Account**: Verify an active Google Cloud Billing Account is attached to the project.
-3. **Application Restrictions**: Set to **Website / HTTP referrers**.
-4. **Authorized HTTP Referrers**:
-   - `http://localhost:5173/*`
-   - `http://127.0.0.1:5173/*`
-   - `https://suraksha-9pfb.onrender.com/*`
-
-### 🗺️ Automatic Google Maps → SURAKSHA Local Map Fallback
-- **Primary Provider**: Google Maps JavaScript API with traffic-aware Routes API.
-- **Deterministic Fallback**: If Google Maps initialization fails (unauthorized domain, missing billing, network drop, or API error), SURAKSHA automatically switches to the **SURAKSHA Local Demo Map**.
-- **Unified State**: The fallback vector map consumes the exact same canonical state (`origin`, `destination`, `fastestRoute`, `safestRoute`, `activeRoute`, `incidents`, `trucks`) with zero page reloads or UI resets.
-
-### 🌤️ Live Weather API Integration
-- **Provider**: Open-Meteo (Backend Proxy `/api/weather`)
-- **Features**: Fetches live temperature, rainfall (mm), and wind speed for active mission coordinates.
-- **Demo Alignment**: Live weather provides real-time operational context, while the M9 simulation remains available for controlled hazard escalation testing during SIH demonstrations.
-
----
-
 ## 🏗️ Architecture & Pipeline Overview
 
 ```mermaid

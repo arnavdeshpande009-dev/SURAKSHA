@@ -47,8 +47,6 @@ export const App: React.FC = () => {
   const [language, setLanguage] = useState<Language>('en');
   const [isFieldReportOpen, setIsFieldReportOpen] = useState<boolean>(false);
   const [dynamicIncidents, setDynamicIncidents] = useState<DemoIncident[]>(DEMO_INCIDENTS);
-  const [origin, setOrigin] = useState<string>('LOC-GAU'); // Guwahati
-  const [destination, setDestination] = useState<string>('LOC-AIZ'); // Aizawl
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -67,28 +65,16 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     void backendService.syncPendingIncidents();
-
-    const originLoc = locations.find((l) => l.id === origin);
-    const lat = originLoc ? originLoc.coordinates[1] : 26.1445;
-    const lng = originLoc ? originLoc.coordinates[0] : 91.7362;
-
-    const updateWeather = () => {
-      backendService.getWeather(lat, lng)
-        .then((weather) => {
-          if (weather.status === 'online' && weather.temperature_c !== undefined) {
-            const rainText = weather.rainfall_mm !== undefined && weather.rainfall_mm > 0 ? ` · Rain ${weather.rainfall_mm}mm` : ' · Clear';
-            setWeatherSummary(`${weather.temperature_c}°C${rainText} (${weather.source || 'Open-Meteo'})`);
-          } else {
-            setWeatherSummary('Weather: offline');
-          }
-        })
+    const weatherTimer = window.setInterval(() => {
+      backendService.getWeather(26.1445, 91.7362)
+        .then((weather) => setWeatherSummary(`${weather.temperature_c}°C · ${weather.rainfall_mm}mm rain`))
         .catch(() => setWeatherSummary('Weather: offline'));
-    };
-
-    updateWeather();
-    const weatherTimer = window.setInterval(updateWeather, 300000);
+    }, 300000);
+    backendService.getWeather(26.1445, 91.7362)
+      .then((weather) => setWeatherSummary(`${weather.temperature_c}°C · ${weather.rainfall_mm}mm rain`))
+      .catch(() => setWeatherSummary('Weather: offline'));
     return () => window.clearInterval(weatherTimer);
-  }, [origin, locations]);
+  }, []);
 
   useEffect(() => {
     if (activeRole !== 'DRIVER' || !navigator.geolocation) return undefined;
@@ -157,6 +143,8 @@ export const App: React.FC = () => {
 
   const [selectedRoad, setSelectedRoad] = useState<ExtendedRoadSegment | null>(null);
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+  const [origin, setOrigin] = useState<string>('LOC-GAU'); // Guwahati
+  const [destination, setDestination] = useState<string>('LOC-AIZ'); // Aizawl
 
   // Determine selected mode based on demo step progression
   const [userSelectedMode, setUserSelectedMode] = useState<RoutingMode | null>(null);
