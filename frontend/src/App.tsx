@@ -460,10 +460,10 @@ export const App: React.FC = () => {
               cursor: 'pointer'
             }}
           >
-            <option value="ADMINISTRATOR">Admin</option>
-            <option value="DISPATCHER">Dispatcher</option>
-            <option value="DRIVER">Driver</option>
-            <option value="RISK_ANALYST">Risk analyst</option>
+            <option value="ADMINISTRATOR" style={{ backgroundColor: '#0F2747', color: '#FFFFFF' }}>Admin</option>
+            <option value="DISPATCHER" style={{ backgroundColor: '#0F2747', color: '#FFFFFF' }}>Dispatcher</option>
+            <option value="DRIVER" style={{ backgroundColor: '#0F2747', color: '#FFFFFF' }}>Driver</option>
+            <option value="RISK_ANALYST" style={{ backgroundColor: '#0F2747', color: '#FFFFFF' }}>Risk analyst</option>
           </select>
           <button
             onClick={handleResetDemo}
