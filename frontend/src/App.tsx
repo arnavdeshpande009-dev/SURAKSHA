@@ -134,8 +134,10 @@ export const App: React.FC = () => {
 
     const enrichRoadRisk = async () => {
       try {
-        // Sample key corridors (first 15 segments or primary highways) to prevent browser socket pool exhaustion
-        const targetRoads = roads.slice(0, 15);
+        // Sample key RISKY corridors and primary highways to enrich risk predictions without socket pool exhaustion
+        const targetRoads = roads.filter((r) => r.status === 'RISKY' || r.road_id === 'NER-R002').slice(0, 15);
+        if (targetRoads.length === 0) return;
+
         const predictions = await Promise.all(
           targetRoads.map((road) => backendService.predictRoadRisk(road).catch(() => null))
         );
