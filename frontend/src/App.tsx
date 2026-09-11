@@ -142,6 +142,16 @@ export const App: React.FC = () => {
   // Determine selected mode based on demo step progression
   const [userSelectedMode, setUserSelectedMode] = useState<RoutingMode | null>(null);
 
+  const handleOriginChange = (newOrigin: string) => {
+    setOrigin(newOrigin);
+    setUserSelectedMode(null);
+  };
+
+  const handleDestinationChange = (newDest: string) => {
+    setDestination(newDest);
+    setUserSelectedMode(null);
+  };
+
   const selectedMode: RoutingMode = useMemo(() => {
     if (userSelectedMode !== null) return userSelectedMode;
     if (demoStep >= 4) return 'SAFEST';
@@ -420,15 +430,8 @@ export const App: React.FC = () => {
           locations={locations}
           origin={origin}
           destination={destination}
-          onOriginChange={(id) => {
-            setOrigin(id);
-            if (id === destination) setDestination('');
-            setUserSelectedMode(null);
-          }}
-          onDestinationChange={(id) => {
-            if (id !== origin) setDestination(id);
-            setUserSelectedMode(null);
-          }}
+          onOriginChange={handleOriginChange}
+          onDestinationChange={handleDestinationChange}
           comparisonResult={comparisonResult}
           selectedMode={selectedMode}
           onSelectMode={(mode) => setUserSelectedMode(mode)}

@@ -68,9 +68,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTruckUpdated,
 }) => {
   const formatTime = (minutes: number) => {
-    const hrs = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    if (hrs === 0) return `${mins} mins`;
+    const totalMins = Math.round(minutes);
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    if (hrs === 0) return `${mins}m`;
     return `${hrs}h ${mins}m`;
   };
 
@@ -233,7 +234,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <div>
                   <div style={{ color: color.textMuted }}>Delay</div>
-                  <div style={{ fontWeight: 600, color: color.danger, marginTop: '2px' }}>+{fastest.etaPrediction.predicted_delay_min}m</div>
+                  <div style={{ fontWeight: 600, color: color.danger, marginTop: '2px' }}>+{Math.round(fastest.etaPrediction.predicted_delay_min)}m</div>
                 </div>
                 <div>
                   <div style={{ color: color.textMuted }}>ETA</div>
@@ -278,7 +279,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <div>
                   <div style={{ color: color.textMuted }}>Delay</div>
-                  <div style={{ fontWeight: 600, color: color.success, marginTop: '2px' }}>+{safest.etaPrediction.predicted_delay_min}m</div>
+                  <div style={{ fontWeight: 600, color: color.success, marginTop: '2px' }}>+{Math.round(safest.etaPrediction.predicted_delay_min)}m</div>
                 </div>
                 <div>
                   <div style={{ color: color.textMuted }}>ETA</div>
@@ -344,7 +345,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '52px', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '220px', overflowY: 'auto' }}>
             {alerts.length > 0 ? (
               alerts.map((alert) => (
                 <div

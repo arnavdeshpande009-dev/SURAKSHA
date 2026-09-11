@@ -112,6 +112,9 @@ export const MapComponent: React.FC<MapProps> = ({
     };
   }, []);
 
+  const routeCacheRef = useRef<Map<string, { polylinePath: google.maps.LatLngLiteral[]; directions: GoogleRouteStep[] }>>(new Map());
+  const activeRequestIdRef = useRef<number>(0);
+
   useEffect(() => {
     let cancelled = false;
     const origin = locations.find((location) => location.id === selectedOrigin);
@@ -126,7 +129,20 @@ export const MapComponent: React.FC<MapProps> = ({
     const localPath = activeRoute.roadSegments.flatMap((segment, segmentIndex) => (
       segmentIndex === 0 ? segment.coordinates : segment.coordinates.slice(1)
     )).map(toLatLng);
+
+    // Compute route cache key based on route path
+    const routeSegmentsKey = `${selectedOrigin}->${selectedDestination}:${activeRoute.roadSegments.map(s => s.road_id).join(',')}`;
+    const cached = routeCacheRef.current.get(routeSegmentsKey);
+    if (cached) {
+      setGoogleRoutePath(cached.polylinePath);
+      setRouteDirections(cached.directions);
+      return () => { cancelled = true; };
+    }
+
+    // Set fallback local OSM path immediately
     setGoogleRoutePath(localPath);
+
+    const requestId = ++activeRequestIdRef.current;
 
     // Compute route through waypoints using Google Maps Directions API
     const intermediateCoords = activeRoute.roadSegments
@@ -136,11 +152,14 @@ export const MapComponent: React.FC<MapProps> = ({
 
     googleMapsService.computeTrafficAwareRoute(origin.coordinates, destination.coordinates, intermediateCoords)
       .then((result) => {
-        if (!cancelled && result.status === 'SUCCESS' && (result.polylinePath?.length ?? 0) > 1) {
-          setGoogleRoutePath(result.polylinePath!);
-          setRouteDirections(result.directions ?? []);
+        if (!cancelled && requestId === activeRequestIdRef.current && result.status === 'SUCCESS' && (result.polylinePath?.length ?? 0) > 1) {
+          const entry = { polylinePath: result.polylinePath!, directions: result.directions ?? [] };
+          routeCacheRef.current.set(routeSegmentsKey, entry);
+          setGoogleRoutePath(entry.polylinePath);
+          setRouteDirections(entry.directions);
         }
-      });
+      })
+      .catch(() => undefined);
 
     return () => { cancelled = true; };
   }, [mapReady, activeRoute, selectedOrigin, selectedDestination, locations]);
