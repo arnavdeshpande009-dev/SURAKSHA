@@ -35,8 +35,10 @@ export class RouteService {
     config: RiskRoutingConfig = DEFAULT_RISK_ROUTING_CONFIG,
     roads?: ExtendedRoadSegment[]
   ): RouteResult {
+    const snappedOrigin = RoadNetworkService.snapToNearestNodeId(originId);
+    const snappedDest = RoadNetworkService.snapToNearestNodeId(destinationId);
     const graph = this.getGraph(roads);
-    return findShortestPath(originId, destinationId, graph, mode, config);
+    return findShortestPath(snappedOrigin, snappedDest, graph, mode, config);
   }
 
   static compareRoutes(

@@ -39,7 +39,9 @@ class GoogleMapsService {
   }
 
   public async loadGoogleMaps(): Promise<typeof google.maps | null> {
-    if (!this.hasApiKey()) {
+    const keyPresent = this.hasApiKey();
+    console.log(`Google Maps key loaded: ${keyPresent ? 'YES' : 'NO'}`);
+    if (!keyPresent) {
       return null;
     }
 
@@ -48,16 +50,19 @@ class GoogleMapsService {
     }
 
     try {
-      await Promise.all([
-        importLibrary('maps'),
-        importLibrary('places'),
-        importLibrary('routes'),
-        importLibrary('geometry')
-      ]);
+      await importLibrary('maps');
+      try {
+        await Promise.all([
+          importLibrary('places'),
+          importLibrary('geometry')
+        ]);
+      } catch (e) {
+        console.warn('Optional Google Maps libraries failed to load:', e);
+      }
       this.isLoaded = true;
       return window.google.maps;
     } catch (error) {
-      console.warn('Google Maps JS API failed to load, falling back to DEMO mode:', error);
+      console.warn('Google Maps JS API failed to load:', error);
       return null;
     }
   }

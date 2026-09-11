@@ -24,19 +24,26 @@ export class NetworkGraph {
     });
 
     roads.forEach((road) => {
-      const startNode = nodesMap.get(road.start_node);
-      const endNode = nodesMap.get(road.end_node);
+      if (!nodesMap.has(road.start_node)) {
+        nodesMap.set(road.start_node, { id: road.start_node, edges: [] });
+      }
+      if (!nodesMap.has(road.end_node)) {
+        nodesMap.set(road.end_node, { id: road.end_node, edges: [] });
+      }
 
-      if (startNode && endNode) {
-        startNode.edges.push({
-          targetNodeId: road.end_node,
-          roadId: road.road_id,
-          distanceKm: road.distance_km,
-          travelTimeMin: road.travel_time_min,
-          status: road.status,
-          segment: road
-        });
+      const startNode = nodesMap.get(road.start_node)!;
+      const endNode = nodesMap.get(road.end_node)!;
 
+      startNode.edges.push({
+        targetNodeId: road.end_node,
+        roadId: road.road_id,
+        distanceKm: road.distance_km,
+        travelTimeMin: road.travel_time_min,
+        status: road.status,
+        segment: road
+      });
+
+      if (!road.one_way) {
         endNode.edges.push({
           targetNodeId: road.start_node,
           roadId: road.road_id,

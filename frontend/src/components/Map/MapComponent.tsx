@@ -128,58 +128,17 @@ export const MapComponent: React.FC<MapProps> = ({
     )).map(toLatLng);
     setGoogleRoutePath(localPath);
 
-    const intermediateCoords = activeRoute.path
-      .slice(1, -1)
-      .map((nodeId) => locations.find((location) => location.id === nodeId)?.coordinates)
+    // Compute route through waypoints using Google Maps Directions API
+    const intermediateCoords = activeRoute.roadSegments
+      .slice(0, -1)
+      .map((segment) => locations.find((l) => l.id === segment.end_node)?.coordinates)
       .filter((coordinates): coordinates is [number, number] => Boolean(coordinates));
 
-    Promise.all([
-      googleMapsService.computeTrafficAwareRoute(origin.coordinates, destination.coordinates, intermediateCoords),
-      intermediateCoords.length > 0
-        ? googleMapsService.computeAlternativeRoutes(origin.coordinates, destination.coordinates)
-        : Promise.resolve(null)
-    ]).then(([result, alternatives]) => {
-        if (!cancelled) {
-          const googlePath = result.status === 'SUCCESS' && (result.polylinePath?.length ?? 0) > 1
-            ? result.polylinePath
-            : alternatives?.status === 'SUCCESS' && (alternatives.polylinePath?.length ?? 0) > 1
-              ? alternatives.polylinePath
-              : undefined;
-          setGoogleRoutePath(googlePath ?? localPath);
-          setRouteDirections(result.directions?.length ? result.directions : alternatives?.directions ?? []);
-          const map = mapRef.current;
-          const maps = mapsRef.current;
-          if (map && maps) {
-            turnMarkersRef.current.forEach((marker) => marker.setMap(null));
-            const turnSteps = result.directions?.length ? result.directions : alternatives?.directions ?? [];
-            turnMarkersRef.current = turnSteps
-              .filter((step) => step.position)
-              .map((step) => new maps.Marker({
-                map,
-                position: step.position,
-                title: step.instruction,
-                icon: {
-                  path: maps.SymbolPath.CIRCLE,
-                  scale: 4.5,
-                  fillColor: '#FFFFFF',
-                  fillOpacity: 1,
-                  strokeColor: '#1A73E8',
-                  strokeWeight: 2
-                },
-                zIndex: 12
-              }));
-            alternativeRouteRefs.current.forEach((line) => line.setMap(null));
-            const paths = alternatives?.alternativePaths ?? [];
-            alternativeRouteRefs.current = paths.map((alternativePath) => new maps.Polyline({
-              map,
-              path: alternativePath,
-              geodesic: true,
-              strokeColor: '#8AB4F8',
-              strokeOpacity: 0.9,
-              strokeWeight: 5,
-              zIndex: 7
-            }));
-          }
+    googleMapsService.computeTrafficAwareRoute(origin.coordinates, destination.coordinates, intermediateCoords)
+      .then((result) => {
+        if (!cancelled && result.status === 'SUCCESS' && (result.polylinePath?.length ?? 0) > 1) {
+          setGoogleRoutePath(result.polylinePath!);
+          setRouteDirections(result.directions ?? []);
         }
       });
 

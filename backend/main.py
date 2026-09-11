@@ -428,8 +428,121 @@ def predict_eta_endpoint(request: ETARequest):
         result = predict_eta(features)
         return result
     except Exception as e:
-        delay = int(round(max(0, request.baseline_travel_time_min * request.average_risk * 0.12 + request.risky_segment_count * 8 + request.traffic_level * 5)))
         return {'baseline_travel_time_min': int(request.baseline_travel_time_min), 'predicted_delay_min': delay, 'predicted_eta_min': int(request.baseline_travel_time_min) + delay}
+
+class LocationPoint(BaseModel):
+    lat: float
+    lon: float
+
+class RouteCalculationRequest(BaseModel):
+    origin: LocationPoint
+    destination: LocationPoint
+    mode: str = 'fastest'
+
+@app.post("/api/routes/calculate")
+def calculate_route_endpoint(request: RouteCalculationRequest):
+    graph_path = Path(__file__).parent.parent / 'data' / 'osm_ner_graph.json'
+    if not graph_path.exists():
+        raise HTTPException(status_code=500, detail="OSM graph dataset missing")
+    
+    with open(graph_path, 'r', encoding='utf-8') as f:
+        graph_data = json.load(f)
+    
+    nodes = {n['id']: n for n in graph_data['nodes']}
+    edges = graph_data['edges']
+    
+    # Snap origin & dest
+    def snap(point):
+        best_node = None
+        min_d = float('inf')
+        for nid, n in nodes.items():
+            d = (n['lat'] - point.lat)**2 + (n['lon'] - point.lon)**2
+            if d < min_d:
+                min_d = d
+                best_node = nid
+        return best_node
+    
+    orig_node = snap(request.origin)
+    dest_node = snap(request.destination)
+    
+    import heapq
+    adj = {n: [] for n in nodes}
+    for e in edges:
+        u = e['start_node']
+        v = e['end_node']
+        adj[u].append((v, e))
+        if not e.get('one_way', False):
+            adj[v].append((u, e))
+    
+    dist = {n: float('inf') for n in nodes}
+    prev = {n: None for n in nodes}
+    dist[orig_node] = 0.0
+    pq = [(0.0, orig_node)]
+    
+    mode = request.mode.upper()
+    while pq:
+        d, u = heapq.heappop(pq)
+        if d > dist[u]: continue
+        if u == dest_node: break
+        for v, edge in adj[u]:
+            t = edge['travel_time_min']
+            if mode == 'FASTEST':
+                cost = t
+            else:
+                risk = edge.get('ai_risk', {}).get('disruption_probability', 0.05)
+                status_p = 45.0 if edge.get('status') == 'RISKY' else 0.0
+                cost = t + (risk * 300.0) + status_p
+            if dist[u] + cost < dist[v]:
+                dist[v] = dist[u] + cost
+                prev[v] = (u, edge)
+                heapq.heappush(pq, (dist[v], v))
+    
+    if dist[dest_node] == float('inf'):
+        raise HTTPException(status_code=404, detail="No viable OSM route found")
+    
+    path_edges = []
+    curr = dest_node
+    while prev[curr] is not None:
+        p, edge = prev[curr]
+        path_edges.append(edge)
+        curr = p
+    path_edges.reverse()
+    
+    total_dist = sum(e['distance_km'] for e in path_edges)
+    total_time = sum(e['travel_time_min'] for e in path_edges)
+    risks = [e.get('ai_risk', {}).get('disruption_probability', 0.05) for e in path_edges]
+    avg_risk = sum(risks) / len(risks) if risks else 0
+    max_risk = max(risks) if risks else 0
+    
+    # Merge coords into GeoJSON LineString
+    merged_coords = []
+    for idx, e in enumerate(path_edges):
+        coords = e['coordinates']
+        if idx == 0:
+            merged_coords.extend(coords)
+        else:
+            if merged_coords[-1] == coords[0]:
+                merged_coords.extend(coords[1:])
+            else:
+                merged_coords.extend(coords[::-1])
+                
+    return {
+        "route_id": f"OSM-{mode}-{len(path_edges)}",
+        "mode": mode,
+        "distance_km": round(total_dist, 1),
+        "baseline_travel_time_min": round(total_time, 1),
+        "predicted_delay_min": round(total_time * avg_risk * 0.15, 1),
+        "predicted_eta_min": round(total_time * (1 + avg_risk * 0.15), 1),
+        "average_risk": round(avg_risk, 3),
+        "maximum_risk": round(max_risk, 3),
+        "risk_level": "HIGH" if max_risk > 0.7 else "MEDIUM" if max_risk > 0.35 else "LOW",
+        "geometry": {
+            "type": "LineString",
+            "coordinates": merged_coords
+        },
+        "segments": [e['road_id'] for e in path_edges],
+        "directions": [f"Follow {e['name'] or 'OSM Highway'}" for e in path_edges[::30]]
+    }
 
 if __name__ == "__main__":
     import uvicorn
