@@ -148,8 +148,6 @@ export const MapComponent: React.FC<MapProps> = ({
     const destination = locations.find((location) => location.id === selectedDestination);
 
     if (!mapReady || !origin || !destination || activeRoute?.status !== 'SUCCESS') {
-      setGoogleRoutePath([]);
-      setRouteDirections([]);
       return () => { cancelled = true; };
     }
 
@@ -157,7 +155,7 @@ export const MapComponent: React.FC<MapProps> = ({
       segmentIndex === 0 ? segment.coordinates : segment.coordinates.slice(1)
     )).map(toLatLng);
 
-    // Compute route cache key based on route path
+    // Compute route cache key based on origin, destination and segments
     const routeSegmentsKey = `${selectedOrigin}->${selectedDestination}:${activeRoute.roadSegments.map(s => s.road_id).join(',')}`;
     const cached = routeCacheRef.current.get(routeSegmentsKey);
     if (cached) {
@@ -166,7 +164,7 @@ export const MapComponent: React.FC<MapProps> = ({
       return () => { cancelled = true; };
     }
 
-    // Set fallback local OSM path immediately
+    // Set local road path immediately so user sees new route while Google Directions resolves
     setGoogleRoutePath(localPath);
 
     const requestId = ++activeRequestIdRef.current;
@@ -186,7 +184,9 @@ export const MapComponent: React.FC<MapProps> = ({
           setRouteDirections(entry.directions);
         }
       })
-      .catch(() => undefined);
+      .catch((err) => {
+        console.warn('Google Maps traffic-aware route computation failed, retained current route:', err);
+      });
 
     return () => { cancelled = true; };
   }, [mapReady, activeRoute, selectedOrigin, selectedDestination, locations]);
